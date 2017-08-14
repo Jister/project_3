@@ -1,6 +1,7 @@
 Header header
 
 bool valid
+bool theta_valid
 sensor_msgs/Image ROI
 float32 x
 float32 y
