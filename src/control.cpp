@@ -4,6 +4,7 @@
 #include <px4_autonomy/Position.h>
 #include <px4_autonomy/Velocity.h>
 #include <px4_autonomy/Takeoff.h>
+#include "project_3/Image_info.h"
 #include "Eigen/Dense"
 
 #define STATE_TAKEOFF 					1
@@ -13,12 +14,15 @@
 #define STATE_FLY						5
 #define STATE_HOVERING					6
 #define STATE_WAITING					7
-#define STATE_CROSS						8
-#define TARGET_LANDING					9
-#define TARGET_CROSS_CIRCLE				10
+#define STATE_IMAGE_CTL_BEFORE_CROSS	8
+#define STATE_CROSS						9
+#define TARGET_LANDING					10
+#define TARGET_CROSS_CIRCLE				11
 
 #define VEL_XY							2.0
-#define VEL_Z							1.5
+#define VEL_UP							1.0
+#define VEL_DOWN						-0.8
+#define LAND_HEIGHT						1.0
 
 using namespace std;
 using namespace Eigen;
@@ -45,14 +49,32 @@ mavros_msgs::State current_state;
 
 px4_autonomy::Position current_pos;
 px4_autonomy::Position pos_stamp;
+bool image_down_valid = false;
 geometry_msgs::Pose2D image_pos;
+int imageCenter[2];
 
 bool isArrived_xy(px4_autonomy::Position pos, px4_autonomy::Position pos_sp)
 {
 	if(sqrt((pos_sp.x - pos.x)*(pos_sp.x - pos.x) + (pos_sp.y - pos.y)*(pos_sp.y - pos.y))< 0.2) 
+	{
 		return true;
+	}
 	else
-		return false;
+	{
+		if(sqrt((pos_sp.x - pos.x)*(pos_sp.x - pos.x) + (pos_sp.y - pos.y)*(pos_sp.y - pos.y))< 0.5)
+		{
+			if(image_front_valid)
+			{
+				return true;
+			}else
+			{
+				return false;
+			}
+		}else
+		{
+			return false;
+		}
+	}
 }
 
 bool isArrived_z(px4_autonomy::Position pos, px4_autonomy::Position pos_sp)
@@ -63,9 +85,57 @@ bool isArrived_z(px4_autonomy::Position pos, px4_autonomy::Position pos_sp)
 		return false;
 }
 
+void rotate(float theta,  const Vectorff& input,  Vectorff& output)
+{
+	float sy = sinf(theta);
+	float cy = cosf(theta);
+
+	Matrix2f data;
+	data(0,0) = cy;
+	data(0,1) = -sy;
+	data(1,0) = sy;
+	data(1,1) = cy;
+
+	output = data * input;
+}
+
 bool image_control(geometry_msgs::Pose2D pos, px4_autonomy::Velocity vel_sp)
 {
+	float P_pos = 0.001;
+	Vector2f vel_sp_body;
+	Vector2f vel_sp_world;
+	Vector2f image_center;
+	Vector2f image_pos;
 
+	image_center(0) = imageCenter[0];
+	image_center(1) = imageCenter[1];
+	image_pos(0) = pos.x;
+	image_pos(1) = pos.y;
+
+	Vector2f err = image_center - image_pos;
+	float dist = err.norm();
+	if(dist < 25)
+	{
+		vel_sp.header.stamp = ros::Time::now();
+		vel_sp.x = 0.0;
+		vel_sp.y = 0.0;
+		vel_sp.z = 0.0;
+		vel_sp.yaw_rate = 0.0;
+
+		return true;
+	}else
+	{
+		vel_sp_body = P_pos * err;
+		rotate(current_pos.yaw, vel_sp_body, vel_sp_world);
+
+		vel_sp.header.stamp = ros::Time::now();
+		vel_sp.x = vel_sp_world(0);
+		vel_sp.y = - vel_sp_world(1);
+		vel_sp.z = 0.0;
+		vel_sp.yaw_rate = 0.0;
+
+		return false;
+	}
 }
 
 void state_callback(const mavros_msgs::State::ConstPtr& msg){
@@ -83,11 +153,14 @@ void pose_callback(const px4_autonomy::Position &msg)
 	current_pos = msg;
 }
 
-void image_callback(const project_3::CamInfo &msg)
+void image_callback(const project_3::Image_info &msg)
 {
-	image_pos.x = 
-	image_pos.y = 
-	image_pos.theta = 
+	image_down_valid = msg.valid;
+	image_pos.x = msg.x;
+	image_pos.y = msg.y;
+	image_pos.theta = msg.theta;
+	imageCenter[0] = msg.center_x;
+	imageCenter[1] = msg.center_y;
 }
 
 int main(int argc, char **argv)
@@ -119,7 +192,7 @@ int main(int argc, char **argv)
 			{
 				case STATE_WAITING:
 				{
-					if(counter < 50)
+					if(counter < 100)
 					{
 						counter ++;
 					}else
@@ -163,7 +236,7 @@ int main(int argc, char **argv)
 							vel_sp.header.stamp = ros::Time::now();
 							vel_sp.x = 0.0;
 							vel_sp.y = 0.0;
-							vel_sp.z = 0.8;
+							vel_sp.z = VEL_UP;
 							vel_sp.yaw_rate = 0.0;	
 							vel_pub.publish(vel_sp);
 						}
@@ -205,8 +278,25 @@ int main(int argc, char **argv)
 
 				case STATE_IMAGE_CTL_BEFORE_LAND:
 				{
+					px4_autonomy::Velocity vel_sp; 
+					if(!image_control(image_pos,vel_sp))
+					{
+						vel_pub.publish(vel_sp);
+					}else
+					{
+						px4_autonomy::Velocity vel_sp; 
+						vel_sp.header.stamp = ros::Time::now();
+						vel_sp.x = 0.0;
+						vel_sp.y = 0.0;
+						vel_sp.z = 0.0
+						vel_sp.yaw_rate = 0.0;	
+						vel_pub.publish(vel_sp);
 
-					
+						//record current position
+						pos_stamp = current_pos;
+						//Switch to fly 
+						vehicle_status = STATE_LAND;
+					}	
 					break;
 				}
 
@@ -248,36 +338,92 @@ int main(int argc, char **argv)
 					}else
 					{
 						//next will be crossing
+						pos_sp.x = pos_stamp.x + Reletive_pos(current_num, 0) - 1.0;
+						pos_sp.y = pos_stamp.y + Reletive_pos(current_num, 1);
+						pos_sp.z = pos_stamp.z;
+
+						if(isArrived_xy(current_pos, pos_sp))
+						{
+							px4_autonomy::Velocity vel_sp; 
+							vel_sp.header.stamp = ros::Time::now();
+							vel_sp.x = 0.0;
+							vel_sp.y = 0.0;
+							vel_sp.z = 0.0;
+							vel_sp.yaw_rate = 0.0;	
+							vel_pub.publish(vel_sp);
+
+							//Switch to cross
+							vehicle_status = STATE_IMAGE_CTL_BEFORE_CROSS;
+
+						}else
+						{
+							float distance = sqrt((pos_sp.x - pos.x)*(pos_sp.x - pos.x) + (pos_sp.y - pos.y)*(pos_sp.y - pos.y));
+							px4_autonomy::Velocity vel_sp; 
+							vel_sp.header.stamp = ros::Time::now();
+							vel_sp.x = (pos_sp.x - pos.x) / distance * VEL_XY;
+							vel_sp.y = (pos_sp.y - pos.y) / distance * VEL_XY;
+							vel_sp.z = 0.0;
+							vel_sp.yaw_rate = 0.0;	
+							vel_pub.publish(vel_sp);
+						}
 
 					}
-	
-
-					
 
 					break;
 				}
 
 				case STATE_LAND:
 				{
+					px4_autonomy::Position pos_sp;
+					pos_sp.x = current_pos.x;
+					pos_sp.y = current_pos.y;
+					pos_sp.z = LAND_HEIGHT;
 
+					px4_autonomy::Velocity vel_sp; 
+					if(image_control(image_pos,vel_sp) && isArrived_z(current_pos, pos_sp))
+					{
+						vehicle_status = STATE_WAITING;
+						current_num ++;
+						px4_autonomy::Takeoff takeOff;
+						takeOff.take_off = 2; 
+		    			takeoff_pub.publish(takeOff);
+		    			ROS_INFO("LANDING......")
+					}else
+					{
+						vel_sp = VEL_DOWN;
+						vel_pub.publish(vel_sp);
+					}
 					
+					break;
+				}
+
+				case STATE_IMAGE_CTL_BEFORE_CROSS:
+				{
+					// if(!arrived)###image_control()
+					// {
+
+					// }else
+					// {
+					// 	vehicle_status = STATE_CROSS;
+					// 	pos_stamp = current_pos;
+
+					// }
+
 					break;
 				}
 
 				case STATE_CROSS:
 				{
+					// px4_autonomy::Position pos_sp_1;
+					// pos_sp_1.x = current_pos.x;
+					// pos_sp_1.y = current_pos.y;
+					// pos_sp_1.z = LAND_HEIGHT;
 
 					
 					break;
-				}
-
-					
-
+				}	
 			}
-
 		}
-
-
 		ros::spinOnce();
 		loop_rate.sleep();
 
