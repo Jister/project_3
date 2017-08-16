@@ -121,7 +121,7 @@ public:
 			vector<Vec4i> lines_h; 
 			vector<Vec4i> lines_v; 
 			vector<float> thetas;
-			HoughLines(result, lines, 1, CV_PI/180, 50, 0, 0 );  
+			HoughLines(result, lines, 1, CV_PI/180, 75, 0, 0 );  
 			vector<cv::Vec2f>::const_iterator it_l= lines.begin();
 
 			while (it_l!=lines.end())
@@ -134,7 +134,7 @@ public:
 					vector<cv::Vec2f>::const_iterator ii= lines_filtered.begin();
 					while (ii!=lines_filtered.end())
 					{
-						if(fabs((*ii)[1] - (*it_l)[1]) < CV_PI/4 && fabs((*ii)[0] - (*it_l)[0])<100)
+						if(fabs((*ii)[1] - (*it_l)[1]) < CV_PI/4 && fabs((*ii)[0] - (*it_l)[0])<rb.width/2)
 						{
 							check = true;
 							break;
@@ -216,7 +216,7 @@ public:
 			if((ratio > 0.95 || ratio < 1.05) && corner_point.size() == 4)
 			{
 				theta_valid = true;
-				theta = (thetas[0] + thetas[1]) /
+				theta = (thetas[0] + thetas[1]) / 2;
 			}else
 			{
 				theta_valid = false;
@@ -293,15 +293,19 @@ int main(int argc, char **argv)
 	while(ros::ok())
 	{
 		cap>>frame;  
+		Mat image_resized;
+		resize(frame, image_resized, Size(640,320));
+		// imshow("source", frame);
+	    //imshow("resize", image_resized);
 		//frame = imread("/home/chenjie/catkin_ws/src/project_3/images/4.png");
 		sensor_msgs::ImagePtr msg;  
 		if(!frame.empty())  
 		{  
 			//imshow("source", frame);
-			msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", frame).toImageMsg();    
+			msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_resized).toImageMsg();    
 			image_pub.publish(msg);  
 
-			imageDetect test(frame);
+			imageDetect test(image_resized);
 			test.getThresholdImage();
 			test.getPosition();
 

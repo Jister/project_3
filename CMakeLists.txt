@@ -41,13 +41,13 @@ target_link_libraries(image_detect
   ${OpenCV_LIBS}
 )
 
-#add_executable(control 
-#  src/control.cpp
-#)
-#target_link_libraries(control
-#  ${catkin_LIBRARIES}
-#  ${OpenCV_LIBS}
-#)
+add_executable(control 
+  src/control.cpp
+)
+target_link_libraries(control
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBS}
+)
 
 add_executable(mouse 
   src/mouse.cpp
