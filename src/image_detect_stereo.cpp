@@ -12,19 +12,20 @@
 using namespace cv;
 using namespace std;
 
+bool left_flag = false;
+bool right_flag = false;
+Mat left_image;
+Mat right_image;
+
 class imageDetect
 {
 private:
 	Mat image;
 	Mat image_threshold;
-	Mat image_contour;
 public:
 	bool image_valid;
-	bool theta_valid;
 	float ROI_x;
 	float ROI_y;
-	float theta;
-	Mat image_ROI;
 
 	imageDetect(Mat src)
 	{
@@ -99,245 +100,76 @@ public:
 			ROI_x = (rb.x + rb.x + rb.width) / 2;
 			ROI_y = (rb.y + rb.y + rb.height) / 2;
 
-			Rect rect;
-			rect.x = ROI_x - rb.width/4;
-			rect.y = ROI_y - rb.height/4;
-			rect.width = rb.width/2;
-			rect.height = rb.height/2;
-			Mat ROI_image = Mat(Size(rect.width, rect.height), CV_8UC3);
 		}else
 		{
 			image_valid = false;
 		}
-	
-		if(image_valid)
-		{
-			Mat result(image.size() , CV_8U , cv::Scalar(0)) ; 
-			Mat result_2(image.size() , CV_8U , cv::Scalar(0)) ; 
-			drawContours(result , contours , -1 , cv::Scalar(255) , 1) ;  
-
-			vector<Vec2f> lines;
-			vector<Vec2f> lines_filtered;
-			vector<Vec4i> lines_h; 
-			vector<Vec4i> lines_v; 
-			vector<float> thetas;
-			HoughLines(result, lines, 1, CV_PI/180, 75, 0, 0 );  
-			vector<cv::Vec2f>::const_iterator it_l= lines.begin();
-
-			while (it_l!=lines.end())
-			{
-				// ROS_INFO("angle:%d",(int)((*it_l)[1]*57.3));
-				// ROS_INFO("dis:%d",(int)((*it_l)[0]));
-				bool check = false;
-				if(lines_filtered.size() > 0)
-				{
-					vector<cv::Vec2f>::const_iterator ii= lines_filtered.begin();
-					while (ii!=lines_filtered.end())
-					{
-						if(fabs((*ii)[1] - (*it_l)[1]) < CV_PI/4 && fabs((*ii)[0] - (*it_l)[0])<rb.width/2)
-						{
-							check = true;
-							break;
-						}
-						++ii;
-					}
-				}
-
-				if(!check)
-				{
-					lines_filtered.push_back((*it_l));
-				}
-				
-				++it_l;
-			}
-
-			vector<cv::Vec2f>::const_iterator ii= lines_filtered.begin();
-			while (ii!=lines_filtered.end())
-			{
-				float rho= (*ii)[0];   // 表示距离
-				float theta= (*ii)[1]; // 表示角度
-				Vec4i temp_line;
-
-				if (theta < CV_PI/4. || theta > 3*CV_PI/4.) // 若检测为垂直线
-				{ 
-					// 得到线与第一行的交点
-					Point pt1(rho/cos(theta),0);
-					// 得到线与最后一行的交点
-					Point pt2((rho-result_2.rows*sin(theta))/cos(theta),result_2.rows);
-					// 调用line函数绘制直线
-					line(result_2, pt1, pt2, cv::Scalar(255), 1);
-					temp_line[0] = pt1.x;
-					temp_line[1] = pt1.y;
-					temp_line[2] = pt2.x;
-					temp_line[3] = pt2.y;
-					lines_v.push_back(temp_line);
-					thetas.push_back(theta);
-				} else // 若检测为水平线
-				{ 
-					// 得到线与第一列的交点
-					Point pt1(0,rho/sin(theta));
-					// 得到线与最后一列的交点
-					Point pt2(result_2.cols,(rho-result_2.cols*cos(theta))/sin(theta));
-					// 调用line函数绘制直线
-					line(result_2, pt1, pt2, cv::Scalar(255), 1);
-					temp_line[0] = pt1.x;
-					temp_line[1] = pt1.y;
-					temp_line[2] = pt2.x;
-					temp_line[3] = pt2.y;
-					lines_h.push_back(temp_line);
-				}
-				++ii;
-			}
-
-			vector<Point> corner_point;
-			for(int i = 0; i < lines_v.size(); i++)
-			{
-				for(int j = 0; j < lines_h.size(); j++)
-				{
-					Point pt;	
-					float x0 = lines_v[i][0];
-					float y0 = lines_v[i][1];
-					float x1 = lines_v[i][2];
-					float y1 = lines_v[i][3];
-					float x2 = lines_h[j][0];
-					float y2 = lines_h[j][1];
-					float x3 = lines_h[j][2];
-					float y3 = lines_h[j][3];
-					
-					pt.y = ( (y0-y1)*(y3-y2)*x0 + (y3-y2)*(x1-x0)*y0 + (y1-y0)*(y3-y2)*x2 + (x2-x3)*(y1-y0)*y2 ) / ( (x1-x0)*(y3-y2) + (y0-y1)*(x3-x2) );
-					pt.x = x2 + (x3-x2)*(pt.y-y2) / (y3-y2);
-		
-					corner_point.push_back(pt);
-					circle(image, pt, 10,  Scalar(0,0,255), 2, 8, 0);
-				}
-			}
-
-			float ratio = (float)rb.width / (float)rb.height;
-			if((ratio > 0.95 || ratio < 1.05) && corner_point.size() == 4)
-			{
-				theta_valid = true;
-				theta = (thetas[0] + thetas[1]) / 2;
-			}else
-			{
-				theta_valid = false;
-			}
-			// imshow("counters" , result) ;
-			// vector<Vec4i> lines;  
-			// HoughLinesP(result, lines, 1, CV_PI/180, 50, 30, 50 );  
-			// for( size_t i = 0; i < lines.size(); i++ )  
-			// {  
-			//     line( result_2, Point(lines[i][0], lines[i][1]),  
-			//         Point(lines[i][2], lines[i][3]), Scalar(255), 1);  
-			// }  
-			//ROS_INFO("%d",(int)corner_point.size());	 
-			image_contour = result_2;
-			imshow("src" , image) ;  
-			imshow("line", image_contour);
-			waitKey(1);
-		}
 			
 	};
 
-	void getCorner()
-	{
-		Mat dst, dst_norm;  
-		dst = Mat::zeros(image_contour.size(), CV_32FC1);  
-		/// Detector parameters  
-		int blockSize = 2;  
-		int apertureSize = 3;  
-		double k = 0.01;  
-		/// Detecting corners  
-		cornerHarris( image_contour, dst, blockSize, apertureSize, k, BORDER_DEFAULT );  
-		/// Normalizing  
-		normalize( dst, dst_norm, 0, 255, NORM_MINMAX, CV_32FC1, Mat() );  
-		/// Drawing a circle around corners  
-		for( int j = 0; j < dst_norm.rows ; j++ )  
-		{ 
-			for( int i = 0; i < dst_norm.cols; i++ )  
-			{  
-				if( (int) dst_norm.at<float>(j,i) >150 )  
-				{   
-					circle( dst_norm, Point( i, j ), 5,  Scalar(0), 2, 8, 0 );   
-					circle(image,Point( i, j ), 5,  Scalar(255,0,0), -1, 8, 0 );  
-				}  
-			}   
-		}      
-		/// Showing the result  
-		imshow( "corners_window", dst_norm );  
-		imshow( "source_window", image );   
-		waitKey(1);
-	};
+	
 		
 };
 
-int main(int argc, char **argv)
-
+void leftImageCallback(const sensor_msgs::Image &msg)
 {
-	ros::init(argc, argv, "image_detect");
+	cv_bridge::CvImagePtr cv_ptr;
+	try
+	{
+		cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+		left_image = cv_ptr->image;
+		left_flag = true;
+	}
+	catch (cv_bridge::Exception& e)
+	{
+		ROS_ERROR("cv_bridge exception: %s", e.what());
+		left_flag = false;
+		return;
+	}
+
+	
+}
+
+void rightImageCallback(const sensor_msgs::Image &msg)
+{
+	cv_bridge::CvImagePtr cv_ptr;
+	try
+	{
+		cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+		right_image =  cv_ptr->image;
+		right_flag = true;
+	}
+	catch (cv_bridge::Exception& e)
+	{
+		ROS_ERROR("cv_bridge exception: %s", e.what());
+		right_flag = false;
+		return;
+	}
+}
+	
+
+int main(int argc, char **argv)
+{
+	ros::init(argc, argv, "image_detect_stereo");
 	ros::NodeHandle n;
-	image_transport::ImageTransport it(n);
-	image_transport::Publisher image_pub = it.advertise("camera/image_raw",1);
-	ros::Publisher image_info_pub = n.advertise<project_3::Image_info>("camera/pose",1);
+	left_sub = node.subscribe("/zed/left/image_rect_color", 1, &leftImageCallback);
+	right_sub = node.subscribe("/zed/right/image_rect_color", 1, &rightImageCallback);
+	ros::Publisher image_info_pub = n.advertise<project_3::Image_info>("camera/stereo/pose",1);
 	ros::Rate loop_rate(10);
-
-	Mat frame;
-	VideoCapture cap(0);  
-
-	while(!cap.isOpened() && ros::ok())  
-	{  
-		ROS_INFO("Cannot connect to camera......");
-		ros::spinOnce();
-		loop_rate.sleep();
-	}  
 
 	while(ros::ok())
 	{
-		cap>>frame;  
-		Mat image_resized;
-		resize(frame, image_resized, Size(640,320));
-		// imshow("source", frame);
-	    //imshow("resize", image_resized);
-		//frame = imread("/home/chenjie/catkin_ws/src/project_3/images/4.png");
-		sensor_msgs::ImagePtr msg;  
-		if(!frame.empty())  
-		{  
-			//imshow("source", frame);
-			msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_resized).toImageMsg();    
-			image_pub.publish(msg);  
-
-			imageDetect test(image_resized);
-			test.getThresholdImage();
-			test.getPosition();
-
-			if(test.image_valid)
-			{
-				project_3::Image_info img_msg;
-				img_msg.header.stamp = ros::Time::now();
-				img_msg.valid = true;
-				//img_msg.ROI = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test.image_ROI).toImageMsg();
-				img_msg.x = test.ROI_x;
-				img_msg.y = test.ROI_y;
-				img_msg.theta_valid = test.theta_valid;
-				img_msg.theta = test.theta;
-				img_msg.center_x = frame.rows / 2.0;
-				img_msg.center_y = frame.cols / 2.0;
-
-				image_info_pub.publish(img_msg);
-			}else
-			{
-				project_3::Image_info img_msg;
-				img_msg.header.stamp = ros::Time::now();
-				img_msg.valid = false;
-				image_info_pub.publish(img_msg);
-			}
-		}else
+		if(left_flag && right_flag)
 		{
-			ROS_INFO("Empty image......");
-			project_3::Image_info img_msg;
-			img_msg.header.stamp = ros::Time::now();
-			img_msg.valid = false;
-			image_info_pub.publish(img_msg);
-		}  
+			imageDetect left(left_image);
+			imageDetect right(right_image);
+
+			left.getThresholdImage();
+			left.getPosition();
+			right.getThresholdImage();
+			right.getPosition();
+
+		}
 
 		ros::spinOnce();
 		loop_rate.sleep();
