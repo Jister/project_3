@@ -21,8 +21,8 @@
 #define TARGET_CROSS_CIRCLE				11
 
 #define VEL_XY							2.0
-#define VEL_UP							1.0
-#define VEL_DOWN						-0.8
+#define VEL_UP							0.8
+#define VEL_DOWN						-0.5
 #define LAND_HEIGHT						1.0
 
 using namespace std;
@@ -45,7 +45,7 @@ bool image_down_valid = false;
 geometry_msgs::Pose2D image_pos;
 int imageCenter[2];
 
-bool isArrived_xy(px4_autonomy::Position pos, px4_autonomy::Position pos_sp)
+bool isArrived_xy(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
 {
 	if(sqrt((pos_sp.x - pos.x)*(pos_sp.x - pos.x) + (pos_sp.y - pos.y)*(pos_sp.y - pos.y))< 0.2) 
 	{
@@ -69,7 +69,7 @@ bool isArrived_xy(px4_autonomy::Position pos, px4_autonomy::Position pos_sp)
 	}
 }
 
-bool isArrived_z(px4_autonomy::Position pos, px4_autonomy::Position pos_sp)
+bool isArrived_z(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
 {
 	if(fabs(pos_sp.z - pos.z) < 0.1) 
 		return true;
@@ -91,7 +91,7 @@ void rotate(float theta,  const Vector2f& input,  Vector2f& output)
 	output = data * input;
 }
 
-bool image_control(geometry_msgs::Pose2D pos, px4_autonomy::Velocity vel_sp)
+bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 {
 	float P_pos = 0.001;
 	Vector2f vel_sp_body;
@@ -104,7 +104,7 @@ bool image_control(geometry_msgs::Pose2D pos, px4_autonomy::Velocity vel_sp)
 	image_pos(0) = pos.x;
 	image_pos(1) = pos.y;
 
-	Vector2f err = image_center - image_pos;
+	Vector2f err = image_pos - image_center;
 	float dist = err.norm();
 	if(dist < 25)
 	{
@@ -181,11 +181,10 @@ int main(int argc, char **argv)
 
 	while(ros::ok())
 	{
-
-		loop_rate.sleep();
-		ros::spinOnce();
 		if(current_state.mode != "OFFBOARD")
 		{
+			loop_rate.sleep();
+			ros::spinOnce();
 			continue;
 		}else
 		{
@@ -435,8 +434,8 @@ int main(int argc, char **argv)
 				}	
 			}
 		}
-		// ros::spinOnce();
-		// loop_rate.sleep();
+		ros::spinOnce();
+		loop_rate.sleep();
 
 	}
 	return 0;
