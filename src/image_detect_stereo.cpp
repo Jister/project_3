@@ -156,17 +156,17 @@ Point3f uv2xyz(Point2f uvLeft,Point2f uvRight)
     hconcat(mLeftRotation,mLeftTranslation,mLeftRT);  
     Mat mLeftIntrinsic = Mat(3,3,CV_32F,leftIntrinsic);  
     Mat mLeftM = mLeftIntrinsic * mLeftRT;  
-    //cout<<"左相机M矩阵 = "<<endl<<mLeftM<<endl;  
+    cout<<"左相机M矩阵 = "<<endl<<mLeftM<<endl;  
   	
   	Mat mrightRot_V = Mat(3,1,CV_32F,rightRot_V);
     Mat mRightRotation;
-    Rodrigues(mleftRot_V, mLeftRotation);
+    Rodrigues(mrightRot_V, mRightRotation);
     Mat mRightTranslation = Mat(3,1,CV_32F,rightTranslation);  
     Mat mRightRT = Mat(3,4,CV_32F);//右相机M矩阵  
     hconcat(mRightRotation,mRightTranslation,mRightRT);  
     Mat mRightIntrinsic = Mat(3,3,CV_32F,rightIntrinsic);  
     Mat mRightM = mRightIntrinsic * mRightRT;  
-    //cout<<"右相机M矩阵 = "<<endl<<mRightM<<endl;  
+    cout<<"右相机M矩阵 = "<<endl<<mRightM<<endl;  
   
     //最小二乘法A矩阵  
     Mat A = Mat(4,3,CV_32F);  
@@ -196,7 +196,7 @@ Point3f uv2xyz(Point2f uvLeft,Point2f uvRight)
     Mat XYZ = Mat(3,1,CV_32F);  
     //采用SVD最小二乘法求解XYZ  
     solve(A,B,XYZ,DECOMP_SVD);  
-    //cout<<"空间坐标为 = "<<endl<<XYZ<<endl;  
+    cout<<"空间坐标为 = "<<endl<<XYZ<<endl;  
   
     //世界坐标系中坐标  
     Point3f world;  
@@ -272,7 +272,7 @@ int main(int argc, char **argv)
 			if(left.image_valid && right.image_valid)
 			{
 				Point3f pos;
-				//pos = uv2xyz(left.uvPos, right.uvPos);
+				pos = uv2xyz(left.uvPos, right.uvPos);
 				ROS_INFO("%f    %f    %f", pos.x, pos.y, pos.z);
 			}
 	
