@@ -248,8 +248,8 @@ int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "image_detect_stereo");
 	ros::NodeHandle n;
-	left_sub = node.subscribe("/zed/left/image_rect_color", 1, &leftImageCallback);
-	right_sub = node.subscribe("/zed/right/image_rect_color", 1, &rightImageCallback);
+	left_sub = n.subscribe("/zed/left/image_rect_color", 1, &leftImageCallback);
+	right_sub = n.subscribe("/zed/right/image_rect_color", 1, &rightImageCallback);
 	ros::Publisher image_info_pub = n.advertise<project_3::Image_info>("camera/stereo/pose",1);
 	ros::Rate loop_rate(10);
 
