@@ -33,26 +33,11 @@ include_directories(
   include
 )
 
-add_executable(image_detect 
-  src/image_detect.cpp
+add_executable(image_detect_stereo
+  src/image_detect_stereo.cpp
 )
-target_link_libraries(image_detect
+target_link_libraries(image_detect_stereo
   ${catkin_LIBRARIES}
   ${OpenCV_LIBS}
 )
 
-add_executable(control 
-  src/control.cpp
-)
-target_link_libraries(control
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBS}
-)
-
-add_executable(mouse 
-  src/mouse.cpp
-)
-target_link_libraries(mouse
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBS}
-)

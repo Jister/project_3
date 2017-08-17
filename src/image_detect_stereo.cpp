@@ -12,6 +12,35 @@
 using namespace cv;
 using namespace std;
 
+//左相机内参数矩阵  
+float leftIntrinsic[3][3] = {350.007,       0,             353.108,  
+                             0,             350.007,       176.841,  
+                             0,             0,             1};  
+//左相机畸变系数  
+float leftDistortion[1][5] = {0.0, 0.0, 0.0, 0.0, 0.0};  
+//左相机旋转矩阵  
+//Rx = RX (in rad),
+//Ry = CV,
+//Rz = RZ.
+//Tx = - baseline,
+//Ty = 0,
+//Tz = 0. 
+float leftRot_V[3] = [0.00575019, 0.0122058, -0.000346486];
+//左相机平移向量  
+float leftTranslation[1][3] = {-120.0, 0.0, 0.0};  
+  
+//右相机内参数矩阵  
+float rightIntrinsic[3][3] ={350.035,       0,             350.161,  
+                             0,             350.035,       188.171,  
+                             0,             0,             1};  
+//右相机畸变系数  
+float rightDistortion[1][5] =  {0, 0, 0, 0, 0};    
+//右相机旋转矩阵 
+float rightRot_V[3] = [0.0, 0.0, 0.0];
+//右相机平移向量  
+float rightTranslation[1][3] = {0.0, 0.0, 0.0};  
+
+
 bool left_flag = false;
 bool right_flag = false;
 Mat left_image;
@@ -109,15 +138,11 @@ public:
 
 //************************************  
 // Description: 根据左右相机中成像坐标求解空间坐标  
-// Method:    uv2xyz  
-// FullName:  uv2xyz  
-// Access:    public   
+// Method:    uv2xyz   
 // Parameter: Point2f uvLeft  
 // Parameter: Point2f uvRight  
 // Returns:   cv::Point3f  
-// Author:    小白  
-// Date:      2017/01/10  
-// History:  
+  
 //************************************  
 Point3f uv2xyz(Point2f uvLeft,Point2f uvRight)  
 {  
@@ -125,15 +150,19 @@ Point3f uv2xyz(Point2f uvLeft,Point2f uvRight)
     //Z*|v1| = Ml*|Y|                   Z*|v2| = Mr*|Y|  
     //  [ 1]      |Z|                     [ 1]      |Z|  
     //            |1|                               |1|  
-    Mat mLeftRotation = Mat(3,3,CV_32F,leftRotation);  
+    Mat mleftRot_V = Mat(3,1,CV_32F,leftRot_V);
+    Mat mLeftRotation;
+    Rodrigues(mleftRot_V, mLeftRotation);
     Mat mLeftTranslation = Mat(3,1,CV_32F,leftTranslation);  
     Mat mLeftRT = Mat(3,4,CV_32F);//左相机M矩阵  
     hconcat(mLeftRotation,mLeftTranslation,mLeftRT);  
     Mat mLeftIntrinsic = Mat(3,3,CV_32F,leftIntrinsic);  
     Mat mLeftM = mLeftIntrinsic * mLeftRT;  
     //cout<<"左相机M矩阵 = "<<endl<<mLeftM<<endl;  
-  
-    Mat mRightRotation = Mat(3,3,CV_32F,rightRotation);  
+  	
+  	Mat mrightRot_V = Mat(3,1,CV_32F,rightRot_V);
+    Mat mRightRotation;
+    Rodrigues(mleftRot_V, mLeftRotation);
     Mat mRightTranslation = Mat(3,1,CV_32F,rightTranslation);  
     Mat mRightRT = Mat(3,4,CV_32F);//右相机M矩阵  
     hconcat(mRightRotation,mRightTranslation,mRightRT);  
@@ -169,7 +198,6 @@ Point3f uv2xyz(Point2f uvLeft,Point2f uvRight)
     Mat XYZ = Mat(3,1,CV_32F);  
     //采用SVD最小二乘法求解XYZ  
     solve(A,B,XYZ,DECOMP_SVD);  
-  
     //cout<<"空间坐标为 = "<<endl<<XYZ<<endl;  
   
     //世界坐标系中坐标  
@@ -237,6 +265,16 @@ int main(int argc, char **argv)
 			right.getThresholdImage();
 			right.getPosition();
 
+			if(left.image_valid && right.image_valid)
+			{
+				Point3f pos;
+				pos = uv2xyz(left.uvPos, right.uvPos);
+				ROS_INFO("%f    %f    %f", pos.x, pos.y, pos.z);
+			}
+	
+
+			left_flag = false;
+			right_flag = false;
 		}
 
 		ros::spinOnce();
