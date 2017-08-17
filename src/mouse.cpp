@@ -22,7 +22,7 @@ void myMouseCallback(int event,int x,int y,int flags,void* param)
 int main( int argc, char* argv[] )   
 {   
     ros::init(argc, argv, "image_detect");
-    IplImage* img = cvLoadImage("/home/chenjie/catkin_ws/src/project_3/images/1.jpg");  
+    IplImage* img = cvLoadImage("/home/ubuntu/Pictures/1.png");  
     cvNamedWindow("MyWindow");  
       
     cvSetMouseCallback("MyWindow",myMouseCallback,(void*)img);  
