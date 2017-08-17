@@ -40,4 +40,3 @@ target_link_libraries(image_detect_stereo
   ${catkin_LIBRARIES}
   ${OpenCV_LIBS}
 )
-

@@ -25,7 +25,7 @@ float leftDistortion[1][5] = {0.0, 0.0, 0.0, 0.0, 0.0};
 //Tx = - baseline,
 //Ty = 0,
 //Tz = 0. 
-float leftRot_V[3] = [0.00575019, 0.0122058, -0.000346486];
+float leftRot_V[3] = {0.00575019, 0.0122058, -0.000346486};
 //左相机平移向量  
 float leftTranslation[1][3] = {-120.0, 0.0, 0.0};  
   
@@ -36,7 +36,7 @@ float rightIntrinsic[3][3] ={350.035,       0,             350.161,
 //右相机畸变系数  
 float rightDistortion[1][5] =  {0, 0, 0, 0, 0};    
 //右相机旋转矩阵 
-float rightRot_V[3] = [0.0, 0.0, 0.0];
+float rightRot_V[3] = {0.0, 0.0, 0.0};
 //右相机平移向量  
 float rightTranslation[1][3] = {0.0, 0.0, 0.0};  
 
@@ -48,10 +48,9 @@ Mat right_image;
 
 class imageDetect
 {
-private:
+public:
 	Mat image;
 	Mat image_threshold;
-public:
 	bool image_valid;
 	Point2f uvPos;
 
@@ -87,8 +86,7 @@ public:
 		// morphologyEx(image_threshold, image_threshold, MORPH_CLOSE, element);   
 		// erode(image_threshold, image_threshold, element);
 		// dilate(image_threshold, image_threshold, element);
-		imshow("image_threshold",image_threshold);
-		waitKey(1);
+		
 	};
 
 	void getPosition()
@@ -248,8 +246,8 @@ int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "image_detect_stereo");
 	ros::NodeHandle n;
-	left_sub = n.subscribe("/zed/left/image_rect_color", 1, &leftImageCallback);
-	right_sub = n.subscribe("/zed/right/image_rect_color", 1, &rightImageCallback);
+	ros::Subscriber left_sub = n.subscribe("/zed/left/image_rect_color", 1, &leftImageCallback);
+	ros::Subscriber right_sub = n.subscribe("/zed/right/image_rect_color", 1, &rightImageCallback);
 	ros::Publisher image_info_pub = n.advertise<project_3::Image_info>("camera/stereo/pose",1);
 	ros::Rate loop_rate(10);
 
@@ -265,10 +263,16 @@ int main(int argc, char **argv)
 			right.getThresholdImage();
 			right.getPosition();
 
+			imshow("image_threshold_left",left.image_threshold);
+			imshow("image_threshold_right",right.image_threshold);
+			imshow("source left",left.image);
+			imshow("source right",right.image);
+			waitKey(1);
+
 			if(left.image_valid && right.image_valid)
 			{
 				Point3f pos;
-				pos = uv2xyz(left.uvPos, right.uvPos);
+				//pos = uv2xyz(left.uvPos, right.uvPos);
 				ROS_INFO("%f    %f    %f", pos.x, pos.y, pos.z);
 			}
 	
