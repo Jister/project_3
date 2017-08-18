@@ -25,9 +25,10 @@ float leftDistortion[1][5] = {0.0, 0.0, 0.0, 0.0, 0.0};
 //Tx = - baseline,
 //Ty = 0,
 //Tz = 0. 
-float leftRot_V[3] = {0.00575019, 0.0122058, -0.000346486};
+float leftRot_V[3] = {0.0, 0.0, 0.0};
+//float leftRot_V[3] = {0.00575019, 0.0122058, -0.000346486};
 //左相机平移向量  
-float leftTranslation[1][3] = {-120.0, 0.0, 0.0};  
+float leftTranslation[1][3] = {-60.0, 0.0, 0.0};  
   
 //右相机内参数矩阵  
 float rightIntrinsic[3][3] ={350.035,       0,             350.161,  
@@ -38,7 +39,7 @@ float rightDistortion[1][5] =  {0, 0, 0, 0, 0};
 //右相机旋转矩阵 
 float rightRot_V[3] = {0.0, 0.0, 0.0};
 //右相机平移向量  
-float rightTranslation[1][3] = {0.0, 0.0, 0.0};  
+float rightTranslation[1][3] = {60.0, 0.0, 0.0};  
 
 
 bool left_flag = false;
