@@ -130,9 +130,15 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 	}
 }
 
+bool image_control_2(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
+{
+	
+}
+
 void state_callback(const mavros_msgs::State &msg){
 	previous_state = current_state;
     current_state = msg;
+    ROS_INFO("TEST");
 }
 
 void px4_status_callback(const std_msgs::UInt8 &msg)
@@ -348,8 +354,8 @@ int main(int argc, char **argv)
 					{
 						px4_autonomy::Position pos_sp;
 						//next will be crossing
-						pos_sp.x = pos_stamp.x + Reletive_pos(current_num, 0) - 1.0;
-						pos_sp.y = pos_stamp.y + Reletive_pos(current_num, 1);
+						pos_sp.x = pos_stamp.x + Reletive_pos(current_num, 0);
+						pos_sp.y = pos_stamp.y + Reletive_pos(current_num, 1) - 1.0;
 						pos_sp.z = pos_stamp.z;
 
 						if(isArrived_xy(current_pos, pos_sp))
