@@ -294,7 +294,7 @@ int main(int argc, char **argv)
 	{
 		cap>>frame;  
 		Mat image_resized;
-		resize(frame, image_resized, Size(640,320));
+		resize(frame, image_resized, Size(640,360));
 		// imshow("source", frame);
 	    //imshow("resize", image_resized);
 		//frame = imread("/home/chenjie/catkin_ws/src/project_3/images/4.png");
