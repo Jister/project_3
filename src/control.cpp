@@ -23,15 +23,15 @@
 #define TARGET_LANDING					11
 #define TARGET_CROSS_CIRCLE				12
 
-#define VEL_XY							2.0
-#define VEL_UP							0.8
-#define VEL_DOWN						-0.5
+#define VEL_XY							0.8
+#define VEL_UP							0.5
+#define VEL_DOWN						-0.8
 #define LAND_HEIGHT						1.0
 
 using namespace std;
 using namespace Eigen;
 
-float fly_height[9] = { 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5};
+float fly_height[9] = { 1.8, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5};
 float cross_height[4] = {1.2, 1.4, 1.6, 1.8};
 Matrix<float, 9, 4> Reletive_pos;
 // Reletive_pos.resize(9,4);
@@ -101,7 +101,7 @@ void rotate(float theta,  const Vector2f& input,  Vector2f& output)
 
 bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 {
-	float P_pos = 0.001;
+	float P_pos = 0.008;
 	Vector2f vel_sp_body;
 	Vector2f vel_sp_world;
 	Vector2f image_center;
@@ -112,6 +112,8 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 	image_pos(0) = pos.x;
 	image_pos(1) = pos.y;
 
+	ROS_INFO("Image pos: %f  %f",image_pos(0),image_pos(1));
+	ROS_INFO("Image center: %f  %f",image_center(0),image_center(1));
 	Vector2f err = image_pos - image_center;
 	float dist = err.norm();
 	if(dist < 25)
@@ -125,16 +127,16 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 		return true;
 	}else
 	{
-		vel_sp_body = P_pos * err;
-		rotate(current_pos.yaw, vel_sp_body, vel_sp_world);
+		vel_sp_world = P_pos * err;
+		//rotate(current_pos.yaw, vel_sp_body, vel_sp_world);
 
 		vel_sp.header.stamp = ros::Time::now();
 		vel_sp.x = vel_sp_world(0);
 		vel_sp.y = - vel_sp_world(1);
 		vel_sp.z = 0.0;
 		vel_sp.yaw_rate = 0.0;
-
-		return false;
+		ROS_INFO("VEL_SP: %f  %f",vel_sp.x, vel_sp.y);
+		return true;
 	}
 }
 
@@ -239,8 +241,8 @@ int main(int argc, char **argv)
 	ros::Rate loop_rate(20);
 
 	Reletive_pos<<
-	1.6,  -1.5,  0,   TARGET_LANDING,      	//1-2Parking
-	0.15,  3.2,  0,   TARGET_CROSS_CIRCLE, 	//2-3Cross
+   -2.65,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
+	2.65,  0.0,  0,   TARGET_CROSS_CIRCLE, 	//2-3Cross
 	0.7,  -1.6,  0,   TARGET_LANDING,		//3-4P
 	1.85, -1.55, 0,   TARGET_CROSS_CIRCLE,	//4-5C
 	2.95,  2.2,  0,   TARGET_CROSS_CIRCLE,	//5-6C
@@ -277,6 +279,7 @@ int main(int argc, char **argv)
 					{
 						counter = 0;
 						vehicle_status = STATE_TAKEOFF;
+						ROS_INFO("Take off");
 					}
 					break;
 				}
@@ -316,6 +319,8 @@ int main(int argc, char **argv)
 							vel_sp.x = 0.0;
 							vel_sp.y = 0.0;
 							vel_sp.z = VEL_UP;
+							// if(vel_sp.z > VEL_UP) vel_sp.z = VEL_UP;
+							// if(vel_sp.z < VEL_DOWN) vel_sp.z = VEL_DOWN;
 							vel_sp.yaw_rate = 0.0;	
 							vel_pub.publish(vel_sp);
 						}
@@ -351,6 +356,7 @@ int main(int argc, char **argv)
 					if(!image_control(image_pos,vel_sp))
 					{
 						vel_pub.publish(vel_sp);
+						ROS_INFO("Image control");
 					}else
 					{
 						px4_autonomy::Velocity vel_sp; 
@@ -400,7 +406,7 @@ int main(int argc, char **argv)
 
 				case STATE_FLY:
 				{
-					if(Reletive_pos(current_num, 4) == TARGET_LANDING)
+					if(Reletive_pos(current_num, 3) == TARGET_LANDING)
 					{	
 						//next will be landing 
 						px4_autonomy::Position pos_sp;
@@ -488,7 +494,9 @@ int main(int argc, char **argv)
 		    			ROS_INFO("LANDING......");
 					}else
 					{
-						vel_sp.z = VEL_DOWN;
+						vel_sp.z = (pos_sp.z - current_pos.z) * 1.0;
+						if(vel_sp.z > VEL_UP) vel_sp.z = VEL_UP;
+						if(vel_sp.z < VEL_DOWN) vel_sp.z = VEL_DOWN;
 						vel_pub.publish(vel_sp);
 					}
 					

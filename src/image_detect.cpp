@@ -329,6 +329,7 @@ int main(int argc, char **argv)
 				//img_msg.ROI = cv_bridge::CvImage(std_msgs::Header(), "bgr8", test.image_ROI).toImageMsg();
 				img_msg.x = test.ROI_x;
 				img_msg.y = test.ROI_y;
+				//ROS_INFO("X: %f  Y: %f", img_msg.x, img_msg.y);
 				img_msg.theta_valid = test.theta_valid;
 				img_msg.theta = test.theta;
 				img_msg.center_x = frame.rows / 2.0;
