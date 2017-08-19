@@ -19,14 +19,18 @@
 #define STATE_WAITING					7
 #define STATE_IMAGE_CTL_BEFORE_CROSS	8
 #define STATE_CROSS						9
-#define STATE_ADJUST_Z					10
-#define TARGET_LANDING					11
-#define TARGET_CROSS_CIRCLE				12
+#define STATE_ADJUST_Z_BEFORE_CROSS		10
+#define STATE_ADJUST_Z_AFTER_CROSS		11
+#define TARGET_LANDING					12
+#define TARGET_CROSS_CIRCLE				13
 
 #define VEL_XY							0.8
-#define VEL_UP							0.5
+#define VEL_UP							0.8
 #define VEL_DOWN						-0.8
+#define VEL_Z 							0.8
 #define LAND_HEIGHT						1.0
+
+#define PI 								3.14
 
 using namespace std;
 using namespace Eigen;
@@ -45,6 +49,9 @@ int counter = 0;
 mavros_msgs::State previous_state;
 mavros_msgs::State current_state;
 
+bool _reset_pos_sp = false;
+px4_autonomy::Position pos_sp_dt; 
+
 bool z_arrived = false;
 px4_autonomy::Position current_pos;
 px4_autonomy::Position pos_stamp;
@@ -52,6 +59,15 @@ bool image_down_valid = false;
 geometry_msgs::Pose2D image_pos;
 geometry_msgs::Point stereo_pos;
 int imageCenter[2];
+
+void reset_pos_sp(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
+{
+	if(_reset_pos_sp)
+	{
+		pos_sp = pos;
+		_reset_pos_sp = false;
+	}
+}
 
 bool isArrived_xy(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
 {
@@ -136,6 +152,7 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 		vel_sp.z = 0.0;
 		vel_sp.yaw_rate = 0.0;
 		ROS_INFO("VEL_SP: %f  %f",vel_sp.x, vel_sp.y);
+//		return false;
 		return true;
 	}
 }
@@ -240,6 +257,8 @@ int main(int argc, char **argv)
     ros::Publisher vel_pub = n.advertise<px4_autonomy::Velocity>("/px4/cmd_vel", 1); 
 	ros::Rate loop_rate(20);
 
+	float dt = 0.05;
+
 	Reletive_pos<<
    -2.65,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
 	2.65,  0.0,  0,   TARGET_CROSS_CIRCLE, 	//2-3Cross
@@ -279,7 +298,7 @@ int main(int argc, char **argv)
 					{
 						counter = 0;
 						vehicle_status = STATE_TAKEOFF;
-						ROS_INFO("Take off");
+						ROS_INFO("Takeoff");
 					}
 					break;
 				}
@@ -291,6 +310,7 @@ int main(int argc, char **argv)
 						px4_autonomy::Takeoff takeOff;
 						takeOff.take_off = 1; 
 		    			takeoff_pub.publish(takeOff);
+		    			_reset_pos_sp = true;
 					}else
 					{
 						//fly to set height
@@ -300,29 +320,33 @@ int main(int argc, char **argv)
 						pos_sp.z = fly_height[current_num];
 						if(isArrived_z(current_pos, pos_sp))
 						{
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = 0.0;
-							vel_sp.y = 0.0;
-							vel_sp.z = 0.0;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
+							_reset_pos_sp = true;
+							reset_pos_sp(current_pos, pos_sp_dt);
+							pos_sp_dt.header.stamp = ros::Time::now();
+							pos_sp_dt.yaw = PI / 2;	
+							pose_pub.publish(pos_sp_dt);
 							//Switch to image control
-							vehicle_status = STATE_IMAGE_CTL_AFTER_TAKEOFF;
+							vehicle_status = STATE_HOVERING;
+							vehicle_next_status = STATE_IMAGE_CTL_AFTER_TAKEOFF;
 							ROS_INFO("Takeoff ready...");
 
 						}else
 						{
 							//rise the height
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = 0.0;
-							vel_sp.y = 0.0;
-							vel_sp.z = VEL_UP;
-							// if(vel_sp.z > VEL_UP) vel_sp.z = VEL_UP;
-							// if(vel_sp.z < VEL_DOWN) vel_sp.z = VEL_DOWN;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
+							reset_pos_sp(current_pos, pos_sp_dt);
+							px4_autonomy::Position pos_sp_dt; 
+							pos_sp_dt.header.stamp = ros::Time::now();
+							pos_sp_dt.x = pos_sp.x;
+							pos_sp_dt.y = pos_sp.y;
+							if(pos_sp_dt.z < pos_sp.z)
+							{
+								pos_sp_dt.z += VEL_UP * dt;
+							}else
+							{
+								pos_sp_dt.z = pos_sp.z;
+							}
+							pos_sp_dt.yaw = PI / 2.0;	
+							pose_pub.publish(pos_sp_dt);
 						}
 					}
 					break;
@@ -369,11 +393,12 @@ int main(int argc, char **argv)
 
 						//record current position
 						pos_stamp = current_pos;
+						//reset pos_sp
+						_reset_pos_sp = true;
 						//Switch to fly 
 						vehicle_next_status = STATE_FLY;
 						vehicle_status = STATE_HOVERING;
-						ROS_INFO("Image Ready");
-
+						ROS_INFO("Image Control Ready");
 					}
 
 					break;
@@ -397,18 +422,22 @@ int main(int argc, char **argv)
 
 						//record current position
 						pos_stamp = current_pos;
-						//Switch to fly 
+						//Switch to land
 						vehicle_status = STATE_HOVERING;
 						vehicle_next_status = STATE_LAND;
+						ROS_INFO("Image Control Ready");
 					}	
 					break;
 				}
 
 				case STATE_FLY:
 				{
+					ROS_INFO("Flying...");
+					reset_pos_sp(current_pos, pos_sp_dt);
 					if(Reletive_pos(current_num, 3) == TARGET_LANDING)
 					{	
 						//next will be landing 
+						ROS_INFO("Next will be landing...");
 						px4_autonomy::Position pos_sp;
 						pos_sp.x = pos_stamp.x + Reletive_pos(current_num, 0);
 						pos_sp.y = pos_stamp.y + Reletive_pos(current_num, 1);
@@ -416,61 +445,92 @@ int main(int argc, char **argv)
 
 						if(isArrived_xy(current_pos, pos_sp))
 						{
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = 0.0;
-							vel_sp.y = 0.0;
-							vel_sp.z = 0.0;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
+							_reset_pos_sp = true;
+							reset_pos_sp(current_pos, pos_sp_dt);
+
+							pos_sp_dt.header.stamp = ros::Time::now();
+							pos_sp_dt.yaw = PI / 2;	
+							pose_pub.publish(pos_sp_dt);
 
 							//Switch to image_control
-							vehicle_status = STATE_IMAGE_CTL_BEFORE_LAND;
+							vehicle_status = STATE_HOVERING;
+							vehicle_next_status = STATE_IMAGE_CTL_BEFORE_LAND;
 
 						}else
 						{
-							float distance = sqrt((pos_sp.x - current_pos.x)*(pos_sp.x - current_pos.x) + (pos_sp.y - current_pos.y)*(pos_sp.y - current_pos.y));
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = (pos_sp.x - current_pos.x) / distance * VEL_XY;
-							vel_sp.y = (pos_sp.y - current_pos.y) / distance * VEL_XY;
-							vel_sp.z = 0.0;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
+							float distance = sqrt((pos_sp.x - pos_sp_dt.x)*(pos_sp.x - pos_sp_dt.x) + (pos_sp.y - pos_sp_dt.y)*(pos_sp.y - pos_sp_dt.y));
+							float vec_x = (pos_sp.x - pos_sp_dt.x) / distance;
+							float vec_y = (pos_sp.y - pos_sp_dt.y) / distance;
+
+							pos_sp_dt.header.stamp = ros::Time::now();
+							if(fabs(pos_sp.x - pos_sp_dt.x) < 0.01)
+							{
+								pos_sp_dt.x = pos_sp.x;
+							}else
+							{
+								pos_sp_dt.x += vec_x * VEL_XY * dt;
+							}
+							
+							if(fabs(pos_sp.y - pos_sp_dt.y) < 0.01)
+							{
+								pos_sp_dt.y = pos_sp.y;
+							}else
+							{
+								pos_sp_dt.y += vec_y * VEL_XY * dt;
+							}
+							pos_sp_dt.z = pos_sp.y;
+							pos_sp_dt.yaw = PI/2.0;	
+							pose_pub.publish(pos_sp_dt);
 						}
 
 					}else
 					{
-						px4_autonomy::Position pos_sp;
 						//next will be crossing
+						ROS_INFO("Next will be crossing...");
+						reset_pos_sp(current_pos, pos_sp_dt);
+						px4_autonomy::Position pos_sp;
+						
 						pos_sp.x = pos_stamp.x + Reletive_pos(current_num, 0);
 						pos_sp.y = pos_stamp.y + Reletive_pos(current_num, 1) - 1.0;
 						pos_sp.z = pos_stamp.z;
 
 						if(isArrived_xy(current_pos, pos_sp))
 						{
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = 0.0;
-							vel_sp.y = 0.0;
-							vel_sp.z = 0.0;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
+							_reset_pos_sp = true;
+							reset_pos_sp(current_pos, pos_sp_dt);
 
-							//Switch to cross
+							pos_sp_dt.header.stamp = ros::Time::now();
+							pos_sp_dt.yaw = PI / 2;	
+							pose_pub.publish(pos_sp_dt);
+
+							//Switch to image_control before cross
 							vehicle_status = STATE_HOVERING;
 							vehicle_next_status = STATE_IMAGE_CTL_BEFORE_CROSS;
-
 						}else
 						{
-							float distance = sqrt((pos_sp.x - current_pos.x)*(pos_sp.x - current_pos.x) + (pos_sp.y - current_pos.y)*(pos_sp.y - current_pos.y));
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = (pos_sp.x - current_pos.x) / distance * VEL_XY;
-							vel_sp.y = (pos_sp.y - current_pos.y) / distance * VEL_XY;
-							vel_sp.z = 0.0;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
+							float distance = sqrt((pos_sp.x - pos_sp_dt.x)*(pos_sp.x - pos_sp_dt.x) + (pos_sp.y - pos_sp_dt.y)*(pos_sp.y - pos_sp_dt.y));
+							float vec_x = (pos_sp.x - pos_sp_dt.x) / distance;
+							float vec_y = (pos_sp.y - pos_sp_dt.y) / distance;
+
+							pos_sp_dt.header.stamp = ros::Time::now();
+							if(fabs(pos_sp.x - pos_sp_dt.x) < 0.01)
+							{
+								pos_sp_dt.x = pos_sp.x;
+							}else
+							{
+								pos_sp_dt.x += vec_x * VEL_XY * dt;
+							}
+							
+							if(fabs(pos_sp.y - pos_sp_dt.y) < 0.01)
+							{
+								pos_sp_dt.y = pos_sp.y;
+							}else
+							{
+								pos_sp_dt.y += vec_y * VEL_XY * dt;
+							}
+							pos_sp_dt.z = pos_sp.y;
+							pos_sp_dt.yaw = PI/2.0;	
+							pose_pub.publish(pos_sp_dt);
 						}
 					}
 					break;
@@ -510,7 +570,8 @@ int main(int argc, char **argv)
 
 					// }else
 					// {
-					// 	vehicle_status = STATE_CROSS;
+					// 	vehicle_status = STATE_ADJUST_Z_BEFORE_CROSS;
+					// _reset_pos_sp = true;
 					// 	pos_stamp = current_pos;
 
 					// }
@@ -520,99 +581,145 @@ int main(int argc, char **argv)
 
 				case STATE_CROSS:
 				{
-					px4_autonomy::Position pos_sp_2;
-					pos_sp_2.x = current_pos.x;
-					pos_sp_2.y = current_pos.y + 2.0;
-					pos_sp_2.z = cross_height[cross_num];
+					ROS_INFO("Crossing...");
+					reset_pos_sp(current_pos, pos_sp_dt);
 
-					if(!z_arrived)
+					px4_autonomy::Position pos_sp;
+					pos_sp.x = pos_stamp.x;
+					pos_sp.y = pos_stamp.y + 2.0;
+					pos_sp.z = cross_height[cross_num];
+
+					if(isArrived_xy(current_pos, pos_sp))
 					{
-						z_arrived = isArrived_z(current_pos, pos_sp_2);
-						if(z_arrived)
-						{
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = 0.0;
-							vel_sp.y = 0.0;
-							vel_sp.z = 0.0;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
-							vehicle_status = STATE_HOVERING;
-							vehicle_next_status = STATE_CROSS;
-						}else
-						{
-							//rise the height
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = 0.0;
-							vel_sp.y = 0.0;
-							vel_sp.z = VEL_UP;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
-						}	
+						_reset_pos_sp = true;
+						reset_pos_sp(current_pos, pos_sp_dt);
+
+						pos_sp_dt.header.stamp = ros::Time::now();
+						pos_sp_dt.yaw = PI / 2;	
+						pose_pub.publish(pos_sp_dt);
+
+						//Switch to flying 
+						vehicle_status = STATE_HOVERING;
+						vehicle_next_status = STATE_ADJUST_Z_AFTER_CROSS;
+						current_num++;
+						cross_num++;
+						_reset_pos_sp = true;
+						pos_stamp.x = current_pos.x;
+						pos_stamp.y = current_pos.y - 1.0;
+						pos_stamp.z = current_pos.z; 
+
 					}else
 					{
-						if(isArrived_xy(current_pos, pos_sp_2))
+						float distance = sqrt((pos_sp.x - pos_sp_dt.x)*(pos_sp.x - pos_sp_dt.x) + (pos_sp.y - pos_sp_dt.y)*(pos_sp.y - pos_sp_dt.y));
+						float vec_x = (pos_sp.x - pos_sp_dt.x) / distance;
+						float vec_y = (pos_sp.y - pos_sp_dt.y) / distance;
+
+						pos_sp_dt.header.stamp = ros::Time::now();
+						if(fabs(pos_sp.x - pos_sp_dt.x) < 0.01)
 						{
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = 0.0;
-							vel_sp.y = 0.0;
-							vel_sp.z = 0.0;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
-
-							vehicle_status = STATE_HOVERING;
-							vehicle_next_status = STATE_FLY;
-							current_num++;
-							cross_num++;
-							z_arrived = false;
-
+							pos_sp_dt.x = pos_sp.x;
 						}else
 						{
-							float distance = sqrt((pos_sp_2.x - current_pos.x)*(pos_sp_2.x - current_pos.x) + (pos_sp_2.y - current_pos.y)*(pos_sp_2.y - current_pos.y));
-							px4_autonomy::Velocity vel_sp; 
-							vel_sp.header.stamp = ros::Time::now();
-							vel_sp.x = (pos_sp_2.x - current_pos.x) / distance * VEL_XY;
-							vel_sp.y = (pos_sp_2.y - current_pos.y) / distance * VEL_XY;
-							vel_sp.z = 0.0;
-							vel_sp.yaw_rate = 0.0;	
-							vel_pub.publish(vel_sp);
-						}		
-					}
+							pos_sp_dt.x += vec_x * VEL_XY * dt;
+						}
+						
+						if(fabs(pos_sp.y - pos_sp_dt.y) < 0.01)
+						{
+							pos_sp_dt.y = pos_sp.y;
+						}else
+						{
+							pos_sp_dt.y += vec_y * VEL_XY * dt;
+						}
+						pos_sp_dt.z = pos_sp.y;
+						pos_sp_dt.yaw = PI/2.0;	
+						pose_pub.publish(pos_sp_dt);
+					}				
 					break;
 				}	
-				case STATE_ADJUST_Z:
+				case STATE_ADJUST_Z_BEFORE_CROSS:
 				{
 					//fly to set height
 					px4_autonomy::Position pos_sp;
-					pos_sp.x = current_pos.x;
-					pos_sp.y = current_pos.y;
-					pos_sp.z = fly_height[current_num];
+					pos_sp.x = pos_stamp.x;
+					pos_sp.y = pos_stamp.y;
+					pos_sp.z = cross_height[current_num];
+
 					if(isArrived_z(current_pos, pos_sp))
 					{
-						px4_autonomy::Velocity vel_sp; 
-						vel_sp.header.stamp = ros::Time::now();
-						vel_sp.x = 0.0;
-						vel_sp.y = 0.0;
-						vel_sp.z = 0.0;
-						vel_sp.yaw_rate = 0.0;	
-						vel_pub.publish(vel_sp);
+						_reset_pos_sp = true;
+						reset_pos_sp(current_pos, pos_sp_dt);
+						pos_sp_dt.header.stamp = ros::Time::now();
+						pos_sp_dt.yaw = PI / 2;	
+						pose_pub.publish(pos_sp_dt);
 						//Switch to image control
 						vehicle_status = STATE_HOVERING;
+						vehicle_next_status = STATE_CROSS;
+						_reset_pos_sp = true;
+						ROS_INFO("Adjust Z ready...");
 
 					}else
 					{
 						//rise the height
-						px4_autonomy::Velocity vel_sp; 
-						vel_sp.header.stamp = ros::Time::now();
-						vel_sp.x = 0.0;
-						vel_sp.y = 0.0;
-						vel_sp.z = (pos_sp.z - current_pos.z) * 1.0;
-						if(vel_sp.z > VEL_UP) vel_sp.z = VEL_UP;
-						if(vel_sp.z < VEL_DOWN) vel_sp.z = VEL_DOWN;
-						vel_sp.yaw_rate = 0.0;	
-						vel_pub.publish(vel_sp);
+						reset_pos_sp(current_pos, pos_sp_dt);
+						px4_autonomy::Position pos_sp_dt; 
+						pos_sp_dt.header.stamp = ros::Time::now();
+						pos_sp_dt.x = pos_sp.x;
+						pos_sp_dt.y = pos_sp.y;
+						if(pos_sp_dt.z < pos_sp.z)
+						{
+							pos_sp_dt.z += VEL_UP * dt;
+						}else
+						{
+							pos_sp_dt.z = pos_sp.z;
+						}
+						pos_sp_dt.yaw = PI / 2.0;	
+						pose_pub.publish(pos_sp_dt);
+					}
+
+					break;
+				}
+				case STATE_ADJUST_Z_AFTER_CROSS:
+				{
+					//fly to set height
+					px4_autonomy::Position pos_sp;
+					pos_sp.x = pos_stamp.x;
+					pos_sp.y = pos_stamp.y;
+					pos_sp.z = fly_height[current_num];
+
+					if(isArrived_z(current_pos, pos_sp))
+					{
+						_reset_pos_sp = true;
+						reset_pos_sp(current_pos, pos_sp_dt);
+						pos_sp_dt.header.stamp = ros::Time::now();
+						pos_sp_dt.yaw = PI / 2;	
+						pose_pub.publish(pos_sp_dt);
+						//Switch to image control
+						vehicle_status = STATE_HOVERING;
+						vehicle_next_status = STATE_FLY;
+						_reset_pos_sp = true;
+						pos_stamp.z = current_pos.z;
+						ROS_INFO("Adjust Z ready...");
+
+					}else
+					{
+						//adjust the height
+						reset_pos_sp(current_pos, pos_sp_dt);
+						px4_autonomy::Position pos_sp_dt; 
+
+						float vec_z = (pos_sp.z - pos_sp_dt.z) / fabs(pos_sp.z - pos_sp_dt.z);
+
+						pos_sp_dt.header.stamp = ros::Time::now();
+						pos_sp_dt.x = pos_sp.x;
+						pos_sp_dt.y = pos_sp.y;
+						if(fabs(pos_sp.z - pos_sp_dt.z) < 0.01)
+						{
+							pos_sp_dt.z = pos_sp.z;
+						}else
+						{
+							pos_sp_dt.z += vec_z * VEL_Z * dt;
+						}
+						pos_sp_dt.yaw = PI / 2.0;	
+						pose_pub.publish(pos_sp_dt);
 					}
 
 					break;
