@@ -12,6 +12,7 @@
 using namespace cv;
 using namespace std;
 
+//Gopro B203 1080
 float intrinsic[3][3] = {372.640550, 0.0, 315.749910, 0.0, 375.972344, 190.860416, 0, 0, 1};
 float distortion[1][5] = {-0.257675, 0.073781, -0.001009, -0.000553, 0.000000};
 
@@ -307,17 +308,16 @@ int main(int argc, char **argv)
 		initUndistortRectifyMap(cameraMatrix, distCoeffs, R, cameraMatrix, Size(640,360), CV_32FC1, mapx, mapy);
 		image_rect = image_resized.clone();
 		remap(image_resized, image_rect, mapx, mapy, INTER_LINEAR);
-		imshow("rect image", image_rect);
-	    imshow("resize", image_resized);
+
 		//frame = imread("/home/chenjie/catkin_ws/src/project_3/images/4.png");
 		sensor_msgs::ImagePtr msg;  
 		if(!frame.empty())  
 		{  
 			//imshow("source", frame);
-			msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_resized).toImageMsg();    
+			msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_rect).toImageMsg();    
 			image_pub.publish(msg);  
 
-			imageDetect test(image_resized);
+			imageDetect test(image_rect);
 			test.getThresholdImage();
 			test.getPosition();
 

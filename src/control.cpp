@@ -574,7 +574,7 @@ int main(int argc, char **argv)
 					}
 					break;
 				}	
-				case STATE_ADJUST_Z
+				case STATE_ADJUST_Z:
 				{
 					//fly to set height
 					px4_autonomy::Position pos_sp;
