@@ -565,16 +565,18 @@ int main(int argc, char **argv)
 
 				case STATE_IMAGE_CTL_BEFORE_CROSS:
 				{
-					// if(!arrived)###image_control()
-					// {
+					//if(!image_control_2())
+					if(0)
+					{
 
-					// }else
-					// {
-					// 	vehicle_status = STATE_ADJUST_Z_BEFORE_CROSS;
-					// _reset_pos_sp = true;
-					// 	pos_stamp = current_pos;
+					}else
+					{
+						vehicle_next_status = STATE_ADJUST_Z_BEFORE_CROSS;
+						vehicle_status = STATE_HOVERING;
+						_reset_pos_sp = true;
+						pos_stamp = current_pos;
 
-					// }
+					}
 
 					break;
 				}
