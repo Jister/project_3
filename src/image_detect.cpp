@@ -12,6 +12,9 @@
 using namespace cv;
 using namespace std;
 
+float intrinsic[3][3] = {372.640550, 0.0, 315.749910, 0.0, 375.972344, 190.860416, 0, 0, 1};
+float distortion[1][5] = {-0.257675, 0.073781, -0.001009, -0.000553, 0.000000};
+
 class imageDetect
 {
 private:
@@ -294,9 +297,18 @@ int main(int argc, char **argv)
 	{
 		cap>>frame;  
 		Mat image_resized;
+		Mat image_rect;
 		resize(frame, image_resized, Size(640,360));
-		// imshow("source", frame);
-	    //imshow("resize", image_resized);
+		Mat cameraMatrix = Mat(3,3,CV_32FC1,intrinsic);
+		Mat distCoeffs = Mat(1,5,CV_32FC1,distortion);
+		Mat R = Mat::eye(3, 3, CV_32F);
+		Mat mapx = Mat(Size(640,360), CV_32FC1);
+		Mat mapy = Mat(Size(640,360), CV_32FC1);
+		initUndistortRectifyMap(cameraMatrix, distCoeffs, R, cameraMatrix, Size(640,360), CV_32FC1, mapx, mapy);
+		image_rect = image_resized.clone();
+		remap(image_resized, image_rect, mapx, mapy, INTER_LINEAR);
+		imshow("rect image", image_rect);
+	    imshow("resize", image_resized);
 		//frame = imread("/home/chenjie/catkin_ws/src/project_3/images/4.png");
 		sensor_msgs::ImagePtr msg;  
 		if(!frame.empty())  
