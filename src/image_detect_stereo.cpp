@@ -27,7 +27,7 @@ float leftDistortion[1][5] = {0.0, 0.0, 0.0, 0.0, 0.0};
 //Tz = 0. 
 float leftRot_V[3] = {0.00575019, 0.0122058, -0.000346486};
 //左相机平移向量  
-float leftTranslation[1][3] = {-120.0, 0.0, 0.0};  
+float leftTranslation[1][3] = {-60.0, 0.0, 0.0};  
   
 //右相机内参数矩阵  
 float rightIntrinsic[3][3] ={350.035,       0,             350.161,  
@@ -38,7 +38,7 @@ float rightDistortion[1][5] =  {0, 0, 0, 0, 0};
 //右相机旋转矩阵 
 float rightRot_V[3] = {0.0, 0.0, 0.0};
 //右相机平移向量  
-float rightTranslation[1][3] = {0.0, 0.0, 0.0};  
+float rightTranslation[1][3] = {60.0, 0.0, 0.0};  
 
 
 bool left_flag = false;
@@ -48,10 +48,9 @@ Mat right_image;
 
 class imageDetect
 {
-private:
+public:
 	Mat image;
 	Mat image_threshold;
-public:
 	bool image_valid;
 	Point2f uvPos;
 
@@ -87,8 +86,7 @@ public:
 		// morphologyEx(image_threshold, image_threshold, MORPH_CLOSE, element);   
 		// erode(image_threshold, image_threshold, element);
 		// dilate(image_threshold, image_threshold, element);
-		imshow("image_threshold",image_threshold);
-		waitKey(1);
+		
 	};
 
 	void getPosition()
@@ -158,17 +156,17 @@ Point3f uv2xyz(Point2f uvLeft,Point2f uvRight)
     hconcat(mLeftRotation,mLeftTranslation,mLeftRT);  
     Mat mLeftIntrinsic = Mat(3,3,CV_32F,leftIntrinsic);  
     Mat mLeftM = mLeftIntrinsic * mLeftRT;  
-    //cout<<"左相机M矩阵 = "<<endl<<mLeftM<<endl;  
+    cout<<"左相机M矩阵 = "<<endl<<mLeftM<<endl;  
   	
   	Mat mrightRot_V = Mat(3,1,CV_32F,rightRot_V);
     Mat mRightRotation;
-    Rodrigues(mleftRot_V, mLeftRotation);
+    Rodrigues(mrightRot_V, mRightRotation);
     Mat mRightTranslation = Mat(3,1,CV_32F,rightTranslation);  
     Mat mRightRT = Mat(3,4,CV_32F);//右相机M矩阵  
     hconcat(mRightRotation,mRightTranslation,mRightRT);  
     Mat mRightIntrinsic = Mat(3,3,CV_32F,rightIntrinsic);  
     Mat mRightM = mRightIntrinsic * mRightRT;  
-    //cout<<"右相机M矩阵 = "<<endl<<mRightM<<endl;  
+    cout<<"右相机M矩阵 = "<<endl<<mRightM<<endl;  
   
     //最小二乘法A矩阵  
     Mat A = Mat(4,3,CV_32F);  
@@ -198,7 +196,7 @@ Point3f uv2xyz(Point2f uvLeft,Point2f uvRight)
     Mat XYZ = Mat(3,1,CV_32F);  
     //采用SVD最小二乘法求解XYZ  
     solve(A,B,XYZ,DECOMP_SVD);  
-    //cout<<"空间坐标为 = "<<endl<<XYZ<<endl;  
+    cout<<"空间坐标为 = "<<endl<<XYZ<<endl;  
   
     //世界坐标系中坐标  
     Point3f world;  
@@ -248,8 +246,8 @@ int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "image_detect_stereo");
 	ros::NodeHandle n;
-	left_sub = n.subscribe("/zed/left/image_rect_color", 1, &leftImageCallback);
-	right_sub = n.subscribe("/zed/right/image_rect_color", 1, &rightImageCallback);
+	ros::Subscriber left_sub = n.subscribe("/zed/left/image_rect_color", 1, &leftImageCallback);
+	ros::Subscriber right_sub = n.subscribe("/zed/right/image_rect_color", 1, &rightImageCallback);
 	ros::Publisher image_info_pub = n.advertise<project_3::Image_info>("camera/stereo/pose",1);
 	ros::Rate loop_rate(10);
 
@@ -264,6 +262,12 @@ int main(int argc, char **argv)
 			left.getPosition();
 			right.getThresholdImage();
 			right.getPosition();
+
+			imshow("image_threshold_left",left.image_threshold);
+			imshow("image_threshold_right",right.image_threshold);
+			imshow("source left",left.image);
+			imshow("source right",right.image);
+			waitKey(1);
 
 			if(left.image_valid && right.image_valid)
 			{
