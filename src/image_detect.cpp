@@ -332,8 +332,8 @@ int main(int argc, char **argv)
 				//ROS_INFO("X: %f  Y: %f", img_msg.x, img_msg.y);
 				img_msg.theta_valid = test.theta_valid;
 				img_msg.theta = test.theta;
-				img_msg.center_x = frame.rows / 2.0;
-				img_msg.center_y = frame.cols / 2.0;
+				img_msg.center_y = image_rect.rows / 2.0;
+				img_msg.center_x = image_rect.cols / 2.0;
 
 				image_info_pub.publish(img_msg);
 			}else

@@ -29,13 +29,17 @@
 #define VEL_DOWN						-0.8
 #define VEL_Z 							0.8
 #define LAND_HEIGHT						1.0
+#define IMG_CRITICAL					20
+#define POS_NEAR						0.2
+#define Z_NEAR							0.05
+#define IMG_CTL_P 						0.8
 
 #define PI 								3.14
 
 using namespace std;
 using namespace Eigen;
 
-float fly_height[9] = { 1.8, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5};
+float fly_height[9] = { 2.0, 2.0, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5};
 float cross_height[4] = {1.2, 1.4, 1.6, 1.8};
 Matrix<float, 9, 4> Reletive_pos;
 // Reletive_pos.resize(9,4);
@@ -60,6 +64,7 @@ bool takeoff_ready = false;
 px4_autonomy::Position current_pos;
 px4_autonomy::Position pos_stamp;
 bool image_down_valid = false;
+bool num_valid = false;
 geometry_msgs::Pose2D image_pos;
 geometry_msgs::Point stereo_pos;
 int imageCenter[2];
@@ -79,7 +84,7 @@ void reset_pos_sp()
 
 bool isArrived_xy(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
 {
-	if(sqrt((pos_sp.x - pos.x)*(pos_sp.x - pos.x) + (pos_sp.y - pos.y)*(pos_sp.y - pos.y))< 0.2) 
+	if(sqrt((pos_sp.x - pos.x)*(pos_sp.x - pos.x) + (pos_sp.y - pos.y)*(pos_sp.y - pos.y))< POS_NEAR) 
 	{
 		return true;
 	}
@@ -101,9 +106,21 @@ bool isArrived_xy(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
 	}
 }
 
+bool isArrived_xy_for_img(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
+{
+	if(sqrt((pos_sp.x - pos.x)*(pos_sp.x - pos.x) + (pos_sp.y - pos.y)*(pos_sp.y - pos.y))< POS_NEAR) 
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
 bool isArrived_z(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
 {
-	if(fabs(pos_sp.z - pos.z) < 0.1) 
+	if(fabs(pos_sp.z - pos.z) < Z_NEAR) 
 		return true;
 	else
 		return false;
@@ -176,7 +193,7 @@ bool isImageReady(geometry_msgs::Pose2D &pos)
 	ROS_INFO("Image center: %f  %f",image_center(0),image_center(1));
 	Vector2f err = image_pos - image_center;
 	float dist = err.norm();
-	if(dist < 25)
+	if(dist < IMG_CRITICAL)
 	{
 		return true;
 	}else
@@ -187,7 +204,8 @@ bool isImageReady(geometry_msgs::Pose2D &pos)
 
 bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Position &pos_sp)
 {
-	float P_pos = 0.008;
+	float P_pos_x = IMG_CTL_P * current_pos.z / 372.64;
+	float P_pos_y = IMG_CTL_P * current_pos.z / 375.97;
 	Vector2f pos_sp_increase;
 	Vector2f image_center;
 	Vector2f image_pos;
@@ -201,7 +219,7 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Position &pos_sp)
 	// ROS_INFO("Image center: %f  %f",image_center(0),image_center(1));
 	Vector2f err = image_pos - image_center;
 	float dist = err.norm();
-	if(dist < 25)
+	if(dist < IMG_CRITICAL)
 	{
 		pos_sp.header.stamp = ros::Time::now();
 		pos_sp.x = current_pos.x;
@@ -212,7 +230,8 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Position &pos_sp)
 		return true;
 	}else
 	{
-		pos_sp_increase = P_pos * err;
+		pos_sp_increase(0) = P_pos_x * err(0);
+		pos_sp_increase(1) = P_pos_y * err(1);
 		//rotate(current_pos.yaw, vel_sp_body, vel_sp_world);
 
 		pos_sp.header.stamp = ros::Time::now();
@@ -220,7 +239,7 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Position &pos_sp)
 		pos_sp.y = current_pos.y - pos_sp_increase(1);
 		pos_sp.z = current_pos.z;
 		pos_sp.yaw = PI / 2.0;
-		ROS_INFO("POS_SP: %f  %f",current_pos.x, current_pos.y);
+		ROS_INFO("POS: %f  %f",current_pos.x, current_pos.y);
 		ROS_INFO("POS_SP: %f  %f",pos_sp.x, pos_sp.y);
 		return false;
 	}
@@ -251,8 +270,9 @@ bool image_fly(px4_autonomy::Position &pos_sp)
 	pos_sp_dt.z = pos_sp.z;
 	pos_sp_dt.yaw = PI/2.0;	
 
-	if(isArrived_xy(current_pos, pos_sp))
+	if(isArrived_xy_for_img(current_pos, pos_sp))
 	{
+		ROS_INFO("update image sp");
 		return true;
 	}else
 	{
@@ -334,6 +354,7 @@ void pose_callback(const px4_autonomy::Position &msg)
 void image_callback(const project_3::Image_info &msg)
 {
 	image_down_valid = msg.valid;
+	num_valid = msg.theta_valid;
 	image_pos.x = msg.x;
 	image_pos.y = msg.y;
 	image_pos.theta = msg.theta;
@@ -363,8 +384,8 @@ int main(int argc, char **argv)
 	ros::Rate loop_rate(20);
 
 	Reletive_pos<<
-   -2.4,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
-	2.4,  0.0,  0,   TARGET_LANDING, 	//2-3Cross
+   -2.5,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
+	2.5,  0.0,  0,   TARGET_LANDING, 	//2-3Cross
 	0.7,  -1.6,  0,   TARGET_LANDING,		//3-4P
 	1.85, -1.55, 0,   TARGET_CROSS_CIRCLE,	//4-5C
 	2.95,  2.2,  0,   TARGET_CROSS_CIRCLE,	//5-6C
@@ -482,7 +503,7 @@ int main(int argc, char **argv)
 				{
 					if(image_down_valid)
 					{
-						if(isImageReady(image_pos))
+						if(isImageReady(image_pos) && num_valid)
 						{
 							_reset_pos_sp = true;
 							reset_pos_sp();
@@ -515,6 +536,10 @@ int main(int argc, char **argv)
 								pose_pub.publish(pos_sp_dt);
 							}else
 							{
+								pos_sp_dt.header.stamp = ros::Time::now();
+								ROS_INFO("sp:          %f   %f", pos_sp_dt.x, pos_sp_dt.y);
+								ROS_INFO("current pos: %f   %f", current_pos.x, current_pos.y);
+								ROS_INFO("%d", px4_status);
 								pose_pub.publish(pos_sp_dt);
 							}
 						}
@@ -530,7 +555,7 @@ int main(int argc, char **argv)
 				{
 					if(image_down_valid)
 					{
-						if(isImageReady(image_pos))
+						if(isImageReady(image_pos) && num_valid)
 						{
 							_reset_pos_sp = true;
 							reset_pos_sp();
@@ -544,7 +569,7 @@ int main(int argc, char **argv)
 							//reset pos_sp
 							_reset_pos_sp = true;
 							//Switch to fly 
-							vehicle_next_status = STATE_FLY;
+							vehicle_next_status = STATE_LAND;
 							vehicle_status = STATE_HOVERING;
 							ROS_INFO("Image Control Ready Before Landing");
 						}else
@@ -563,6 +588,10 @@ int main(int argc, char **argv)
 								pose_pub.publish(pos_sp_dt);
 							}else
 							{
+								pos_sp_dt.header.stamp = ros::Time::now();
+								ROS_INFO("sp:          %f   %f", pos_sp_dt.x, pos_sp_dt.y);
+								ROS_INFO("current pos: %f   %f", current_pos.x, current_pos.y);
+								ROS_INFO("%d", px4_status);
 								pose_pub.publish(pos_sp_dt);
 							}
 						}
@@ -586,7 +615,7 @@ int main(int argc, char **argv)
 						px4_autonomy::Position pos_sp;
 						pos_sp.x = pos_stamp.x + Reletive_pos(current_num, 0);
 						pos_sp.y = pos_stamp.y + Reletive_pos(current_num, 1);
-						pos_sp.z = pos_stamp.z;
+						pos_sp.z = fly_height[current_num];
 
 						if(isArrived_xy(current_pos, pos_sp))
 						{
