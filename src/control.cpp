@@ -39,6 +39,7 @@ float fly_height[9] = { 1.8, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5};
 float cross_height[4] = {1.2, 1.4, 1.6, 1.8};
 Matrix<float, 9, 4> Reletive_pos;
 // Reletive_pos.resize(9,4);
+float dt = 0.05;
 
 int vehicle_status = 0;
 int vehicle_next_status = 0;
@@ -50,7 +51,9 @@ mavros_msgs::State previous_state;
 mavros_msgs::State current_state;
 
 bool _reset_pos_sp = false;
+bool _reset_img_sp = false;
 px4_autonomy::Position pos_sp_dt; 
+px4_autonomy::position img_pos_sp;
 
 bool z_arrived = false;
 bool takeoff_ready = false;
@@ -65,6 +68,7 @@ void reset_pos_sp()
 {
 	if(_reset_pos_sp)
 	{
+		pos_sp_dt.header.stamp = ros::Time::now();
 		pos_sp_dt.x = current_pos.x;
 		pos_sp_dt.y = current_pos.y;
 		pos_sp_dt.z = current_pos.z;
@@ -119,51 +123,11 @@ void rotate(float theta,  const Vector2f& input,  Vector2f& output)
 	output = data * input;
 }
 
-bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
-{
-	float P_pos = 0.008;
-	Vector2f vel_sp_body;
-	Vector2f vel_sp_world;
-	Vector2f image_center;
-	Vector2f image_pos;
-
-	image_center(0) = imageCenter[0];
-	image_center(1) = imageCenter[1];
-	image_pos(0) = pos.x;
-	image_pos(1) = pos.y;
-
-	ROS_INFO("Image pos: %f  %f",image_pos(0),image_pos(1));
-	ROS_INFO("Image center: %f  %f",image_center(0),image_center(1));
-	Vector2f err = image_pos - image_center;
-	float dist = err.norm();
-	if(dist < 25)
-	{
-		vel_sp.header.stamp = ros::Time::now();
-		vel_sp.x = 0.0;
-		vel_sp.y = 0.0;
-		vel_sp.z = 0.0;
-		vel_sp.yaw_rate = 0.0;
-		return true;
-	}else
-	{
-		vel_sp_world = P_pos * err;
-		//rotate(current_pos.yaw, vel_sp_body, vel_sp_world);
-
-		vel_sp.header.stamp = ros::Time::now();
-		vel_sp.x = vel_sp_world(0);
-		vel_sp.y = - vel_sp_world(1);
-		vel_sp.z = 0.0;
-		vel_sp.yaw_rate = 0.0;
-		ROS_INFO("VEL_SP: %f  %f",vel_sp.x, vel_sp.y);
-//		return false;
-		return true;
-	}
-}
-
-// bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Position &pos_sp)
+// bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 // {
 // 	float P_pos = 0.008;
-// 	Vector2f pos_sp_increase;
+// 	Vector2f vel_sp_body;
+// 	Vector2f vel_sp_world;
 // 	Vector2f image_center;
 // 	Vector2f image_pos;
 
@@ -178,28 +142,124 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 // 	float dist = err.norm();
 // 	if(dist < 25)
 // 	{
-// 		pos_sp.header.stamp = ros::Time::now();
-// 		pos_sp.x = current_pos.x;
-// 		pos_sp.y = current_pos.y;
-// 		pos_sp.z = current_pos.y;
-// 		pos_spv.yaw = PI / 2.0;
-
+// 		vel_sp.header.stamp = ros::Time::now();
+// 		vel_sp.x = 0.0;
+// 		vel_sp.y = 0.0;
+// 		vel_sp.z = 0.0;
+// 		vel_sp.yaw_rate = 0.0;
 // 		return true;
 // 	}else
 // 	{
-// 		pos_sp_increase = P_pos * err;
+// 		vel_sp_world = P_pos * err;
 // 		//rotate(current_pos.yaw, vel_sp_body, vel_sp_world);
 
-// 		pos_sp.header.stamp = ros::Time::now();
-// 		pos_sp.x = current_pos.x + pos_sp_increase(0);
-// 		pos_sp.y = current_pos.y - pos_sp_increase(1);
-// 		pos_sp.z = current_pos.z;
-// 		pos_spv.yaw = PI / 2.0;
-// 		ROS_INFO("POS_SP: %f  %f",current_pos.x, current_pos.y);
-// 		ROS_INFO("POS_SP: %f  %f",pos_sp.x, pos_sp.y);
-// 		return false;
+// 		vel_sp.header.stamp = ros::Time::now();
+// 		vel_sp.x = vel_sp_world(0);
+// 		vel_sp.y = - vel_sp_world(1);
+// 		vel_sp.z = 0.0;
+// 		vel_sp.yaw_rate = 0.0;
+// 		ROS_INFO("VEL_SP: %f  %f",vel_sp.x, vel_sp.y);
+// //		return false;
+// 		return true;
 // 	}
 // }
+
+bool isImageReady(geometry_msgs::Pose2D &pos)
+{
+	Vector2f image_center;
+	Vector2f image_pos;
+	image_center(0) = imageCenter[0];
+	image_center(1) = imageCenter[1];
+	image_pos(0) = pos.x;
+	image_pos(1) = pos.y;
+	ROS_INFO("Image pos: %f  %f",image_pos(0),image_pos(1));
+	ROS_INFO("Image center: %f  %f",image_center(0),image_center(1));
+	Vector2f err = image_pos - image_center;
+	float dist = err.norm();
+	if(dist < 25)
+	{
+		return true;
+	}else
+	{
+		return false;
+	}
+}
+
+bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Position &pos_sp)
+{
+	float P_pos = 0.008;
+	Vector2f pos_sp_increase;
+	Vector2f image_center;
+	Vector2f image_pos;
+
+	image_center(0) = imageCenter[0];
+	image_center(1) = imageCenter[1];
+	image_pos(0) = pos.x;
+	image_pos(1) = pos.y;
+
+	// ROS_INFO("Image pos: %f  %f",image_pos(0),image_pos(1));
+	// ROS_INFO("Image center: %f  %f",image_center(0),image_center(1));
+	Vector2f err = image_pos - image_center;
+	float dist = err.norm();
+	if(dist < 25)
+	{
+		pos_sp.header.stamp = ros::Time::now();
+		pos_sp.x = current_pos.x;
+		pos_sp.y = current_pos.y;
+		pos_sp.z = current_pos.y;
+		pos_spv.yaw = PI / 2.0;
+
+		return true;
+	}else
+	{
+		pos_sp_increase = P_pos * err;
+		//rotate(current_pos.yaw, vel_sp_body, vel_sp_world);
+
+		pos_sp.header.stamp = ros::Time::now();
+		pos_sp.x = current_pos.x + pos_sp_increase(0);
+		pos_sp.y = current_pos.y - pos_sp_increase(1);
+		pos_sp.z = current_pos.z;
+		pos_spv.yaw = PI / 2.0;
+		ROS_INFO("POS_SP: %f  %f",current_pos.x, current_pos.y);
+		ROS_INFO("POS_SP: %f  %f",pos_sp.x, pos_sp.y);
+		return false;
+	}
+}
+
+bool image_fly(px4_autonomy::Position &pos_sp)
+{
+	reset_pos_sp();
+	float distance = sqrt((pos_sp.x - pos_sp_dt.x)*(pos_sp.x - pos_sp_dt.x) + (pos_sp.y - pos_sp_dt.y)*(pos_sp.y - pos_sp_dt.y));
+	float vec_x = (pos_sp.x - pos_sp_dt.x) / distance;
+	float vec_y = (pos_sp.y - pos_sp_dt.y) / distance;
+
+	if(fabs(pos_sp.x - pos_sp_dt.x) < 0.01)
+	{
+		pos_sp_dt.x = pos_sp.x;
+	}else
+	{
+		pos_sp_dt.x += vec_x * VEL_XY * dt;
+	}
+	
+	if(fabs(pos_sp.y - pos_sp_dt.y) < 0.01)
+	{
+		pos_sp_dt.y = pos_sp.y;
+	}else
+	{
+		pos_sp_dt.y += vec_y * VEL_XY * dt;
+	}
+	pos_sp_dt.z = pos_sp.z;
+	pos_sp_dt.yaw = PI/2.0;	
+
+	if(isArrived_xy(current_pos, pos_sp)
+	{
+		return true;
+	}else
+	{
+		return false;
+	}
+
+}
 
 bool image_control_2(geometry_msgs::Point &pos, px4_autonomy::Velocity &vel_sp)
 {
@@ -252,8 +312,9 @@ bool image_control_2(geometry_msgs::Point &pos, px4_autonomy::Velocity &vel_sp)
 
 		return false;
 	}
-
 }
+
+
 
 void state_callback(const mavros_msgs::State &msg){
 	previous_state = current_state;
@@ -300,8 +361,6 @@ int main(int argc, char **argv)
 	ros::Publisher pose_pub = n.advertise<px4_autonomy::Position>("/px4/cmd_pose", 1); 
     ros::Publisher vel_pub = n.advertise<px4_autonomy::Velocity>("/px4/cmd_vel", 1); 
 	ros::Rate loop_rate(20);
-
-	float dt = 0.05;
 
 	Reletive_pos<<
    -2.4,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
@@ -369,12 +428,13 @@ int main(int argc, char **argv)
 						{
 							_reset_pos_sp = true;
 							reset_pos_sp();
-							pos_sp_dt.header.stamp = ros::Time::now();
 							pos_sp_dt.yaw = PI / 2;	
 							pose_pub.publish(pos_sp_dt);
 							//Switch to image control
 							vehicle_status = STATE_HOVERING;
 							vehicle_next_status = STATE_IMAGE_CTL_AFTER_TAKEOFF;
+							_reset_pos_sp = true;
+							_reset_img_sp = true;
 							ROS_INFO("Takeoff ready...");
 
 						}else
@@ -406,14 +466,10 @@ int main(int argc, char **argv)
 					if(counter < 20)
 					{
 						counter ++;
-
-						px4_autonomy::Velocity vel_sp; 
-						vel_sp.header.stamp = ros::Time::now();
-						vel_sp.x = 0.0;
-						vel_sp.y = 0.0;
-						vel_sp.z = 0.0;
-						vel_sp.yaw_rate = 0.0;	
-						vel_pub.publish(vel_sp);
+						reset_pos_sp();
+						pos_sp_dt.header.stamp = ros::Time::now();
+						pos_sp_dt.yaw_rate = PI / 2.0;	
+						pose_pub.publish(pos_sp_dt);
 					}else
 					{
 						counter = 0;
@@ -424,29 +480,47 @@ int main(int argc, char **argv)
 
 				case STATE_IMAGE_CTL_AFTER_TAKEOFF:
 				{
-					px4_autonomy::Velocity vel_sp; 
-					if(!image_control(image_pos,vel_sp))
+					if(image_down_valid)
 					{
-						vel_pub.publish(vel_sp);
-						ROS_INFO("Image control");
+						if(isImageReady(image_pos))
+						{
+							_reset_pos_sp = true;
+							reset_pos_sp();
+
+							pos_sp_dt.header.stamp = ros::Time::now();
+							pos_sp_dt.yaw = PI / 2;	
+							pose_pub.publish(pos_sp_dt);
+
+							//record current position
+							pos_stamp = current_pos;
+							//reset pos_sp
+							_reset_pos_sp = true;
+							//Switch to fly 
+							vehicle_next_status = STATE_FLY;
+							vehicle_status = STATE_HOVERING;
+							ROS_INFO("Image Control Ready");
+						}else
+						{
+							ROS_INFO("Image control");
+							//set _reset_pos_sp true before
+							reset_pos_sp();
+							if(_reset_img_sp)
+							{
+								img_pos_sp = current_pos;
+								_reset_img_sp = false;
+							}
+							if(image_fly(img_pos_sp))	//get image sp, update new img sp
+							{
+								image_control(image_pos, img_pos_sp);
+								pose_pub.publish(pos_sp_dt);
+							}else
+							{
+								pose_pub.publish(pos_sp_dt);
+							}
+						}
 					}else
 					{
-						px4_autonomy::Velocity vel_sp; 
-						vel_sp.header.stamp = ros::Time::now();
-						vel_sp.x = 0.0;
-						vel_sp.y = 0.0;
-						vel_sp.z = 0.0;
-						vel_sp.yaw_rate = 0.0;	
-						vel_pub.publish(vel_sp);
-
-						//record current position
-						pos_stamp = current_pos;
-						//reset pos_sp
-						_reset_pos_sp = true;
-						//Switch to fly 
-						vehicle_next_status = STATE_FLY;
-						vehicle_status = STATE_HOVERING;
-						ROS_INFO("Image Control Ready");
+						ROS_INFO("image not valid");
 					}
 
 					break;
@@ -454,28 +528,49 @@ int main(int argc, char **argv)
 
 				case STATE_IMAGE_CTL_BEFORE_LAND:
 				{
-					px4_autonomy::Velocity vel_sp; 
-					if(!image_control(image_pos,vel_sp))
+					if(image_down_valid)
 					{
-						vel_pub.publish(vel_sp);
+						if(isImageReady(image_pos))
+						{
+							_reset_pos_sp = true;
+							reset_pos_sp();
+
+							pos_sp_dt.header.stamp = ros::Time::now();
+							pos_sp_dt.yaw = PI / 2;	
+							pose_pub.publish(pos_sp_dt);
+
+							//record current position
+							pos_stamp = current_pos;
+							//reset pos_sp
+							_reset_pos_sp = true;
+							//Switch to fly 
+							vehicle_next_status = STATE_FLY;
+							vehicle_status = STATE_HOVERING;
+							ROS_INFO("Image Control Ready Before Landing");
+						}else
+						{
+							ROS_INFO("Image control Before Landing");
+							//set _reset_pos_sp true before
+							reset_pos_sp();
+							if(_reset_img_sp)
+							{
+								img_pos_sp = current_pos;
+								_reset_img_sp = false;
+							}
+							if(image_fly(img_pos_sp))	//get image sp, update new img sp
+							{
+								image_control(image_pos, img_pos_sp);
+								pose_pub.publish(pos_sp_dt);
+							}else
+							{
+								pose_pub.publish(pos_sp_dt);
+							}
+						}
 					}else
 					{
-						px4_autonomy::Velocity vel_sp; 
-						vel_sp.header.stamp = ros::Time::now();
-						vel_sp.x = 0.0;
-						vel_sp.y = 0.0;
-						vel_sp.z = 0.0;
-						vel_sp.yaw_rate = 0.0;	
-						vel_pub.publish(vel_sp);
+						ROS_INFO("image not valid");
+					}
 
-						//record current position
-						pos_stamp = current_pos;
-						_reset_pos_sp = true;
-						//Switch to land
-						vehicle_status = STATE_HOVERING;
-						vehicle_next_status = STATE_LAND;
-						ROS_INFO("Image Control Landing Ready");
-					}	
 					break;
 				}
 
@@ -503,6 +598,8 @@ int main(int argc, char **argv)
 							pose_pub.publish(pos_sp_dt);
 
 							//Switch to image_control
+							_reset_pos_sp = true;
+							_reset_img_sp = true;
 							vehicle_status = STATE_HOVERING;
 							vehicle_next_status = STATE_IMAGE_CTL_BEFORE_LAND;
 
@@ -554,6 +651,7 @@ int main(int argc, char **argv)
 							pose_pub.publish(pos_sp_dt);
 
 							//Switch to image_control before cross
+							_reset_pos_sp = true;
 							vehicle_status = STATE_HOVERING;
 							vehicle_next_status = STATE_IMAGE_CTL_BEFORE_CROSS;
 						}else
