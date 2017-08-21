@@ -53,7 +53,7 @@ mavros_msgs::State current_state;
 bool _reset_pos_sp = false;
 bool _reset_img_sp = false;
 px4_autonomy::Position pos_sp_dt; 
-px4_autonomy::position img_pos_sp;
+px4_autonomy::Position img_pos_sp;
 
 bool z_arrived = false;
 bool takeoff_ready = false;
@@ -207,7 +207,7 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Position &pos_sp)
 		pos_sp.x = current_pos.x;
 		pos_sp.y = current_pos.y;
 		pos_sp.z = current_pos.y;
-		pos_spv.yaw = PI / 2.0;
+		pos_sp.yaw = PI / 2.0;
 
 		return true;
 	}else
@@ -219,7 +219,7 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Position &pos_sp)
 		pos_sp.x = current_pos.x + pos_sp_increase(0);
 		pos_sp.y = current_pos.y - pos_sp_increase(1);
 		pos_sp.z = current_pos.z;
-		pos_spv.yaw = PI / 2.0;
+		pos_sp.yaw = PI / 2.0;
 		ROS_INFO("POS_SP: %f  %f",current_pos.x, current_pos.y);
 		ROS_INFO("POS_SP: %f  %f",pos_sp.x, pos_sp.y);
 		return false;
@@ -251,7 +251,7 @@ bool image_fly(px4_autonomy::Position &pos_sp)
 	pos_sp_dt.z = pos_sp.z;
 	pos_sp_dt.yaw = PI/2.0;	
 
-	if(isArrived_xy(current_pos, pos_sp)
+	if(isArrived_xy(current_pos, pos_sp))
 	{
 		return true;
 	}else
@@ -468,7 +468,7 @@ int main(int argc, char **argv)
 						counter ++;
 						reset_pos_sp();
 						pos_sp_dt.header.stamp = ros::Time::now();
-						pos_sp_dt.yaw_rate = PI / 2.0;	
+						pos_sp_dt.yaw = PI / 2.0;	
 						pose_pub.publish(pos_sp_dt);
 					}else
 					{
