@@ -24,7 +24,7 @@
 #define TARGET_LANDING					12
 #define TARGET_CROSS_CIRCLE				13
 
-#define VEL_XY							0.8
+#define VEL_XY							0.4
 #define VEL_UP							1.0
 #define VEL_DOWN						-0.8
 #define VEL_Z 							0.8
@@ -143,7 +143,6 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 		vel_sp.y = 0.0;
 		vel_sp.z = 0.0;
 		vel_sp.yaw_rate = 0.0;
-
 		return true;
 	}else
 	{
@@ -160,6 +159,47 @@ bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Velocity &vel_sp)
 		return true;
 	}
 }
+
+// bool image_control(geometry_msgs::Pose2D &pos, px4_autonomy::Position &pos_sp)
+// {
+// 	float P_pos = 0.008;
+// 	Vector2f pos_sp_increase;
+// 	Vector2f image_center;
+// 	Vector2f image_pos;
+
+// 	image_center(0) = imageCenter[0];
+// 	image_center(1) = imageCenter[1];
+// 	image_pos(0) = pos.x;
+// 	image_pos(1) = pos.y;
+
+// 	ROS_INFO("Image pos: %f  %f",image_pos(0),image_pos(1));
+// 	ROS_INFO("Image center: %f  %f",image_center(0),image_center(1));
+// 	Vector2f err = image_pos - image_center;
+// 	float dist = err.norm();
+// 	if(dist < 25)
+// 	{
+// 		pos_sp.header.stamp = ros::Time::now();
+// 		pos_sp.x = current_pos.x;
+// 		pos_sp.y = current_pos.y;
+// 		pos_sp.z = current_pos.y;
+// 		pos_spv.yaw = PI / 2.0;
+
+// 		return true;
+// 	}else
+// 	{
+// 		pos_sp_increase = P_pos * err;
+// 		//rotate(current_pos.yaw, vel_sp_body, vel_sp_world);
+
+// 		pos_sp.header.stamp = ros::Time::now();
+// 		pos_sp.x = current_pos.x + pos_sp_increase(0);
+// 		pos_sp.y = current_pos.y - pos_sp_increase(1);
+// 		pos_sp.z = current_pos.z;
+// 		pos_spv.yaw = PI / 2.0;
+// 		ROS_INFO("POS_SP: %f  %f",current_pos.x, current_pos.y);
+// 		ROS_INFO("POS_SP: %f  %f",pos_sp.x, pos_sp.y);
+// 		return false;
+// 	}
+// }
 
 bool image_control_2(geometry_msgs::Point &pos, px4_autonomy::Velocity &vel_sp)
 {
@@ -264,8 +304,8 @@ int main(int argc, char **argv)
 	float dt = 0.05;
 
 	Reletive_pos<<
-   -2.65,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
-	2.65,  0.0,  0,   TARGET_CROSS_CIRCLE, 	//2-3Cross
+   -2.4,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
+	2.4,  0.0,  0,   TARGET_LANDING, 	//2-3Cross
 	0.7,  -1.6,  0,   TARGET_LANDING,		//3-4P
 	1.85, -1.55, 0,   TARGET_CROSS_CIRCLE,	//4-5C
 	2.95,  2.2,  0,   TARGET_CROSS_CIRCLE,	//5-6C
@@ -297,7 +337,10 @@ int main(int argc, char **argv)
 					ROS_INFO("Waiting......");
 					if(counter < 50)
 					{
-						counter ++;
+						if(px4_status == 1)
+						{
+							counter ++;
+						}
 					}else
 					{
 						counter = 0;
@@ -427,10 +470,11 @@ int main(int argc, char **argv)
 
 						//record current position
 						pos_stamp = current_pos;
+						_reset_pos_sp = true;
 						//Switch to land
 						vehicle_status = STATE_HOVERING;
 						vehicle_next_status = STATE_LAND;
-						ROS_INFO("Image Control Ready");
+						ROS_INFO("Image Control Landing Ready");
 					}	
 					break;
 				}
@@ -438,6 +482,7 @@ int main(int argc, char **argv)
 				case STATE_FLY:
 				{
 					ROS_INFO("Flying...");
+					//reset current setpoint
 					reset_pos_sp();
 					if(Reletive_pos(current_num, 3) == TARGET_LANDING)
 					{	
@@ -483,7 +528,7 @@ int main(int argc, char **argv)
 							{
 								pos_sp_dt.y += vec_y * VEL_XY * dt;
 							}
-							pos_sp_dt.z = pos_sp.y;
+							pos_sp_dt.z = pos_sp.z;
 							pos_sp_dt.yaw = PI/2.0;	
 							pose_pub.publish(pos_sp_dt);
 						}
@@ -548,21 +593,36 @@ int main(int argc, char **argv)
 					pos_sp.y = current_pos.y;
 					pos_sp.z = LAND_HEIGHT;
 
-					px4_autonomy::Velocity vel_sp; 
-					if(image_control(image_pos,vel_sp) && isArrived_z(current_pos, pos_sp))
+					if(isArrived_z(current_pos, pos_sp))
 					{
+						ROS_INFO("Landing...");
+						_reset_pos_sp = true;
+						reset_pos_sp();
 						vehicle_status = STATE_WAITING;
 						current_num ++;
 						px4_autonomy::Takeoff takeOff;
 						takeOff.take_off = 2; 
 		    			takeoff_pub.publish(takeOff);
-		    			ROS_INFO("LANDING......");
+
 					}else
 					{
-						vel_sp.z = (pos_sp.z - current_pos.z) * 1.0;
-						if(vel_sp.z > VEL_UP) vel_sp.z = VEL_UP;
-						if(vel_sp.z < VEL_DOWN) vel_sp.z = VEL_DOWN;
-						vel_pub.publish(vel_sp);
+						ROS_INFO("Adjust height before land");
+						//adjust the height
+						reset_pos_sp();
+						float vec_z = (pos_sp.z - pos_sp_dt.z) / fabs(pos_sp.z - pos_sp_dt.z);
+
+						pos_sp_dt.header.stamp = ros::Time::now();
+						pos_sp_dt.x = pos_sp.x;
+						pos_sp_dt.y = pos_sp.y;
+						if(fabs(pos_sp.z - pos_sp_dt.z) < 0.01)
+						{
+							pos_sp_dt.z = pos_sp.z;
+						}else
+						{
+							pos_sp_dt.z += vec_z * VEL_Z * dt;
+						}
+						pos_sp_dt.yaw = PI / 2.0;	
+						pose_pub.publish(pos_sp_dt);
 					}
 					
 					break;
