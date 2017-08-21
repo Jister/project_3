@@ -25,7 +25,7 @@
 #define TARGET_CROSS_CIRCLE				13
 
 #define VEL_XY							0.8
-#define VEL_UP							0.8
+#define VEL_UP							1.0
 #define VEL_DOWN						-0.8
 #define VEL_Z 							0.8
 #define LAND_HEIGHT						1.0
@@ -53,6 +53,7 @@ bool _reset_pos_sp = false;
 px4_autonomy::Position pos_sp_dt; 
 
 bool z_arrived = false;
+bool takeoff_ready = false;
 px4_autonomy::Position current_pos;
 px4_autonomy::Position pos_stamp;
 bool image_down_valid = false;
@@ -60,11 +61,14 @@ geometry_msgs::Pose2D image_pos;
 geometry_msgs::Point stereo_pos;
 int imageCenter[2];
 
-void reset_pos_sp(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
+void reset_pos_sp()
 {
 	if(_reset_pos_sp)
 	{
-		pos_sp = pos;
+		pos_sp_dt.x = current_pos.x;
+		pos_sp_dt.y = current_pos.y;
+		pos_sp_dt.z = current_pos.z;
+		ROS_INFO("Reset pos: %f  %f  %f",pos_sp_dt.x, pos_sp_dt.y, pos_sp_dt.z);
 		_reset_pos_sp = false;
 	}
 }
@@ -305,7 +309,7 @@ int main(int argc, char **argv)
 
 				case STATE_TAKEOFF:
 				{
-					if(px4_status != 5)
+					if(px4_status == 1 || px4_status == 2)
 					{
 						px4_autonomy::Takeoff takeOff;
 						takeOff.take_off = 1; 
@@ -321,7 +325,7 @@ int main(int argc, char **argv)
 						if(isArrived_z(current_pos, pos_sp))
 						{
 							_reset_pos_sp = true;
-							reset_pos_sp(current_pos, pos_sp_dt);
+							reset_pos_sp();
 							pos_sp_dt.header.stamp = ros::Time::now();
 							pos_sp_dt.yaw = PI / 2;	
 							pose_pub.publish(pos_sp_dt);
@@ -332,9 +336,9 @@ int main(int argc, char **argv)
 
 						}else
 						{
+							ROS_INFO("TAKEOFF RISING");
 							//rise the height
-							reset_pos_sp(current_pos, pos_sp_dt);
-							px4_autonomy::Position pos_sp_dt; 
+							reset_pos_sp();
 							pos_sp_dt.header.stamp = ros::Time::now();
 							pos_sp_dt.x = pos_sp.x;
 							pos_sp_dt.y = pos_sp.y;
@@ -346,6 +350,7 @@ int main(int argc, char **argv)
 								pos_sp_dt.z = pos_sp.z;
 							}
 							pos_sp_dt.yaw = PI / 2.0;	
+							ROS_INFO("%f", pos_sp_dt.z);
 							pose_pub.publish(pos_sp_dt);
 						}
 					}
@@ -433,7 +438,7 @@ int main(int argc, char **argv)
 				case STATE_FLY:
 				{
 					ROS_INFO("Flying...");
-					reset_pos_sp(current_pos, pos_sp_dt);
+					reset_pos_sp();
 					if(Reletive_pos(current_num, 3) == TARGET_LANDING)
 					{	
 						//next will be landing 
@@ -446,7 +451,7 @@ int main(int argc, char **argv)
 						if(isArrived_xy(current_pos, pos_sp))
 						{
 							_reset_pos_sp = true;
-							reset_pos_sp(current_pos, pos_sp_dt);
+							reset_pos_sp();
 
 							pos_sp_dt.header.stamp = ros::Time::now();
 							pos_sp_dt.yaw = PI / 2;	
@@ -487,7 +492,7 @@ int main(int argc, char **argv)
 					{
 						//next will be crossing
 						ROS_INFO("Next will be crossing...");
-						reset_pos_sp(current_pos, pos_sp_dt);
+						reset_pos_sp();
 						px4_autonomy::Position pos_sp;
 						
 						pos_sp.x = pos_stamp.x + Reletive_pos(current_num, 0);
@@ -497,7 +502,7 @@ int main(int argc, char **argv)
 						if(isArrived_xy(current_pos, pos_sp))
 						{
 							_reset_pos_sp = true;
-							reset_pos_sp(current_pos, pos_sp_dt);
+							reset_pos_sp();
 
 							pos_sp_dt.header.stamp = ros::Time::now();
 							pos_sp_dt.yaw = PI / 2;	
@@ -584,7 +589,7 @@ int main(int argc, char **argv)
 				case STATE_CROSS:
 				{
 					ROS_INFO("Crossing...");
-					reset_pos_sp(current_pos, pos_sp_dt);
+					reset_pos_sp();
 
 					px4_autonomy::Position pos_sp;
 					pos_sp.x = pos_stamp.x;
@@ -594,7 +599,7 @@ int main(int argc, char **argv)
 					if(isArrived_xy(current_pos, pos_sp))
 					{
 						_reset_pos_sp = true;
-						reset_pos_sp(current_pos, pos_sp_dt);
+						reset_pos_sp();
 
 						pos_sp_dt.header.stamp = ros::Time::now();
 						pos_sp_dt.yaw = PI / 2;	
@@ -649,7 +654,7 @@ int main(int argc, char **argv)
 					if(isArrived_z(current_pos, pos_sp))
 					{
 						_reset_pos_sp = true;
-						reset_pos_sp(current_pos, pos_sp_dt);
+						reset_pos_sp();
 						pos_sp_dt.header.stamp = ros::Time::now();
 						pos_sp_dt.yaw = PI / 2;	
 						pose_pub.publish(pos_sp_dt);
@@ -662,8 +667,8 @@ int main(int argc, char **argv)
 					}else
 					{
 						//rise the height
-						reset_pos_sp(current_pos, pos_sp_dt);
-						px4_autonomy::Position pos_sp_dt; 
+						reset_pos_sp();
+						
 						pos_sp_dt.header.stamp = ros::Time::now();
 						pos_sp_dt.x = pos_sp.x;
 						pos_sp_dt.y = pos_sp.y;
@@ -691,7 +696,7 @@ int main(int argc, char **argv)
 					if(isArrived_z(current_pos, pos_sp))
 					{
 						_reset_pos_sp = true;
-						reset_pos_sp(current_pos, pos_sp_dt);
+						reset_pos_sp();
 						pos_sp_dt.header.stamp = ros::Time::now();
 						pos_sp_dt.yaw = PI / 2;	
 						pose_pub.publish(pos_sp_dt);
@@ -705,8 +710,8 @@ int main(int argc, char **argv)
 					}else
 					{
 						//adjust the height
-						reset_pos_sp(current_pos, pos_sp_dt);
-						px4_autonomy::Position pos_sp_dt; 
+						reset_pos_sp();
+						
 
 						float vec_z = (pos_sp.z - pos_sp_dt.z) / fabs(pos_sp.z - pos_sp_dt.z);
 
