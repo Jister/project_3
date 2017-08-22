@@ -36,6 +36,7 @@
 #define Z_NEAR							0.15
 #define IMG_CTL_P 						0.8
 #define CROSS_DISTANCE 					1.5
+#define STEREO_ARRIVED					0.08
 
 #define PI 								3.14
 
@@ -325,7 +326,7 @@ bool image_fly(px4_autonomy::Position &pos_sp)
 
 bool isStereoReady()
 {
-	if(fabs(stereo_pos.y - CROSS_DISTANCE) < 0.1 && fabs(stereo_pos.x) < 0.1)
+	if(fabs(stereo_pos.y - CROSS_DISTANCE) < STEREO_ARRIVED && fabs(stereo_pos.x) < STEREO_ARRIVED)
 	{
 		ROS_INFO("STEREO: %f  %f", stereo_pos.y, stereo_pos.x);
 		ROS_INFO("stereo ready.");
@@ -344,7 +345,7 @@ bool image_control_2(geometry_msgs::Point &pos, px4_autonomy::Position &pos_sp)
 	err(0) = pos.x;
 	err(1) = pos.y - CROSS_DISTANCE;
 	float dist = err.norm();
-	if(fabs(err(0))<0.1 && fabs(err(1))<0.1)
+	if(fabs(err(0)) < STEREO_ARRIVED && fabs(err(1)) < STEREO_ARRIVED)
 	{
 		pos_sp.header.stamp = ros::Time::now();
 		pos_sp.x = current_pos.x;
@@ -884,9 +885,9 @@ int main(int argc, char **argv)
 						vehicle_next_status = STATE_ADJUST_Z_AFTER_CROSS;
 						current_num++;
 						cross_num++;
-						_reset_pos_sp_z;
-						pos_stamp.x = current_pos.x;
-						pos_stamp.y = current_pos.y - CROSS_DISTANCE;
+						_reset_pos_sp_z = true;
+						pos_stamp.x = pos_stamp.x;
+						pos_stamp.y = pos_stamp.y + CROSS_DISTANCE;
 						pos_stamp.z = current_pos.z; 
 
 					}else
@@ -965,8 +966,8 @@ int main(int argc, char **argv)
 					ROS_INFO("Adjust Z after cross.");
 					//fly to set height
 					px4_autonomy::Position pos_sp;
-					pos_sp.x = pos_stamp.x;
-					pos_sp.y = pos_stamp.y;
+					pos_sp.x = current_pos.x;
+					pos_sp.y = current_pos.y;
 					pos_sp.z = fly_height[current_num];
 
 					if(isArrived_z(current_pos, pos_sp))
@@ -974,7 +975,6 @@ int main(int argc, char **argv)
 						pos_sp_dt.header.stamp = ros::Time::now();
 						pos_sp_dt.yaw = PI / 2;	
 						pose_pub.publish(pos_sp_dt);
-						//Switch to image control
 						vehicle_status = STATE_HOVERING;
 						vehicle_next_status = STATE_FLY;
 						_reset_pos_sp_xy = true;

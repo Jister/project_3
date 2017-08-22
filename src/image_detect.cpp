@@ -291,6 +291,13 @@ int main(int argc, char **argv)
 	Mat frame;
 	VideoCapture cap(0);  
 
+	Mat cameraMatrix = Mat(3,3,CV_32FC1,intrinsic);
+	Mat distCoeffs = Mat(1,5,CV_32FC1,distortion);
+	Mat R = Mat::eye(3, 3, CV_32F);
+	Mat mapx = Mat(Size(640,360), CV_32FC1);
+	Mat mapy = Mat(Size(640,360), CV_32FC1);
+	initUndistortRectifyMap(cameraMatrix, distCoeffs, R, cameraMatrix, Size(640,360), CV_32FC1, mapx, mapy);
+
 	while(!cap.isOpened() && ros::ok())  
 	{  
 		ROS_INFO("Cannot connect to camera......");
@@ -304,12 +311,7 @@ int main(int argc, char **argv)
 		Mat image_resized;
 		Mat image_rect;
 		resize(frame, image_resized, Size(640,360));
-		Mat cameraMatrix = Mat(3,3,CV_32FC1,intrinsic);
-		Mat distCoeffs = Mat(1,5,CV_32FC1,distortion);
-		Mat R = Mat::eye(3, 3, CV_32F);
-		Mat mapx = Mat(Size(640,360), CV_32FC1);
-		Mat mapy = Mat(Size(640,360), CV_32FC1);
-		initUndistortRectifyMap(cameraMatrix, distCoeffs, R, cameraMatrix, Size(640,360), CV_32FC1, mapx, mapy);
+		
 		image_rect = image_resized.clone();
 		remap(image_resized, image_rect, mapx, mapy, INTER_LINEAR);
 
@@ -321,7 +323,7 @@ int main(int argc, char **argv)
 			msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_rect).toImageMsg();    
 			image_pub.publish(msg);  
 
-			imshow("origin",image_rect);
+			//imshow("origin",image_rect);
 			imageDetect test(image_rect);
 			test.getThresholdImage();
 			test.getPosition();
