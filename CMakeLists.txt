@@ -56,3 +56,4 @@ target_link_libraries(mouse
   ${catkin_LIBRARIES}
   ${OpenCV_LIBS}
 )
+

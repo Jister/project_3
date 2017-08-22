@@ -16,6 +16,10 @@ using namespace std;
 float intrinsic[3][3] = {372.640550, 0.0, 315.749910, 0.0, 375.972344, 190.860416, 0, 0, 1};
 float distortion[1][5] = {-0.257675, 0.073781, -0.001009, -0.000553, 0.000000};
 
+//Gopro B203 1080S
+// float intrinsic[3][3] = {246.470673, 0.0, 317.837861, 0.0, 227.432647, 200.511899, 0, 0, 1};
+// float distortion[1][5] = {-0.150726, 0.019614, 0.005480, 0.005425, 0.000000};
+
 class imageDetect
 {
 private:
@@ -217,10 +221,10 @@ public:
 			}
 
 			float ratio = (float)rb.width / (float)rb.height;
-			if((ratio > 0.95 || ratio < 1.05) && corner_point.size() == 4)
+			if((ratio > 0.8 || ratio < 1.2))
 			{
 				theta_valid = true;
-				theta = (thetas[0] + thetas[1]) / 2;
+				//theta = (thetas[0] + thetas[1]) / 2;
 			}else
 			{
 				theta_valid = false;
@@ -236,7 +240,7 @@ public:
 			//ROS_INFO("%d",(int)corner_point.size());	 
 			image_contour = result_2;
 			imshow("src" , image) ;  
-			imshow("line", image_contour);
+			//imshow("line", image_contour);
 			waitKey(1);
 		}
 			
@@ -317,6 +321,7 @@ int main(int argc, char **argv)
 			msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", image_rect).toImageMsg();    
 			image_pub.publish(msg);  
 
+			imshow("origin",image_rect);
 			imageDetect test(image_rect);
 			test.getThresholdImage();
 			test.getPosition();
