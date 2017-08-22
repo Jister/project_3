@@ -25,6 +25,7 @@
 #define TARGET_CROSS_CIRCLE				13
 
 #define VEL_XY							0.4
+#define VEL_CROSS						0.2
 #define VEL_UP							1.0
 #define VEL_DOWN						-0.8
 #define VEL_Z 							0.8
@@ -41,8 +42,8 @@
 using namespace std;
 using namespace Eigen;
 
-float fly_height[9] = { 2.0, 2.0, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5};
-float cross_height[4] = {1.2, 1.4, 1.6, 1.8};
+float fly_height[9] = { 2.0, 1.0, 2.0, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5};
+float cross_height[4] = {2.0, 1.4, 1.6, 1.8};
 Matrix<float, 9, 4> Reletive_pos;
 // Reletive_pos.resize(9,4);
 float dt = 0.05;
@@ -119,6 +120,32 @@ bool isArrived_xy(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
 		}
 	}
 }
+
+
+bool isArrived_xy_stereo(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
+{
+	if(sqrt((pos_sp.x - pos.x)*(pos_sp.x - pos.x) + (pos_sp.y - pos.y)*(pos_sp.y - pos.y))< POS_NEAR) 
+	{
+		return true;
+	}
+	else
+	{
+		if(sqrt((pos_sp.x - pos.x)*(pos_sp.x - pos.x) + (pos_sp.y - pos.y)*(pos_sp.y - pos.y))< 0.5)
+		{
+			if(image_stereo_valid)
+			{
+				return true;
+			}else
+			{
+				return false;
+			}
+		}else
+		{
+			return false;
+		}
+	}
+}
+
 
 bool isArrived_xy_for_img(px4_autonomy::Position &pos, px4_autonomy::Position &pos_sp)
 {
@@ -300,10 +327,12 @@ bool isStereoReady()
 {
 	if(fabs(stereo_pos.y - CROSS_DISTANCE) < 0.1 && fabs(stereo_pos.x) < 0.1)
 	{
+		ROS_INFO("STEREO: %f  %f", stereo_pos.y, stereo_pos.x);
 		ROS_INFO("stereo ready.");
 		return true;
 	}else
 	{
+		ROS_INFO("STEREO: %f  %f", stereo_pos.y, stereo_pos.x);
 		return false;
 	}
 }
@@ -389,8 +418,8 @@ int main(int argc, char **argv)
 
 	Reletive_pos<<
    -2.5,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
-	2.5,  0.0,  0,   TARGET_LANDING, 	//2-3Cross
-	0.7,  -1.6,  0,   TARGET_LANDING,		//3-4P
+	0.0,  3.0,  0,   TARGET_CROSS_CIRCLE, 	//2-3Cross
+	0.0,  2.2,  0,   TARGET_LANDING,		//3-4P
 	1.85, -1.55, 0,   TARGET_CROSS_CIRCLE,	//4-5C
 	2.95,  2.2,  0,   TARGET_CROSS_CIRCLE,	//5-6C
    -2.78,  0.8,  0,   TARGET_LANDING,		//6-7P
@@ -685,7 +714,7 @@ int main(int argc, char **argv)
 						pos_sp.y = pos_stamp.y + Reletive_pos(current_num, 1) - CROSS_DISTANCE;
 						pos_sp.z = fly_height[current_num];
 
-						if(isArrived_xy(current_pos, pos_sp))
+						if(isArrived_xy_stereo(current_pos, pos_sp))
 						{
 							_reset_pos_sp_xy = true;
 							reset_pos_sp_xy();
@@ -872,7 +901,7 @@ int main(int argc, char **argv)
 							pos_sp_dt.x = pos_sp.x;
 						}else
 						{
-							pos_sp_dt.x += vec_x * VEL_XY * dt;
+							pos_sp_dt.x += vec_x * VEL_CROSS * dt;
 						}
 						
 						if(fabs(pos_sp.y - pos_sp_dt.y) < 0.01)
@@ -880,9 +909,9 @@ int main(int argc, char **argv)
 							pos_sp_dt.y = pos_sp.y;
 						}else
 						{
-							pos_sp_dt.y += vec_y * VEL_XY * dt;
+							pos_sp_dt.y += vec_y * VEL_CROSS * dt;
 						}
-						pos_sp_dt.z = pos_sp.y;
+						pos_sp_dt.z = pos_sp.z;
 						pos_sp_dt.yaw = PI/2.0;	
 						pose_pub.publish(pos_sp_dt);
 					}				

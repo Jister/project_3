@@ -57,3 +57,11 @@ target_link_libraries(mouse
   ${OpenCV_LIBS}
 )
 
+#add_executable(pixel_to_depth 
+#  src/pixel_to_depth.cpp
+#)
+#target_link_libraries(pixel_to_depth
+#  ${catkin_LIBRARIES}
+#  ${OpenCV_LIBS}
+#)
+

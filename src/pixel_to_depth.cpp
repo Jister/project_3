@@ -13,6 +13,7 @@
 #include <nav_msgs/Odometry.h>
 #include "project_3/Image_info.h"
 
+
 using namespace cv;
 using namespace std;
 
@@ -28,6 +29,7 @@ public:
 	Mat image;
 	Mat image_threshold;
 	bool image_valid;
+	bool num_valid;
 	Point2f uvPos;
 
 	imageDetect(Mat src)
@@ -56,6 +58,8 @@ public:
 				}
 			}
 		}
+		imshow("thre", image_threshold);
+		waitKey(1);
 		/*image operation*/
 		// Mat element = getStructuringElement(MORPH_RECT, Size(4,4));
 		// morphologyEx(image_threshold, image_threshold, MORPH_OPEN, element);
@@ -102,6 +106,14 @@ public:
 			uvPos.x = (rb.x + rb.x + rb.width) / 2;
 			uvPos.y = (rb.y + rb.y + rb.height) / 2;
 
+			float ratio = (float)rb.width / (float)rb.height;
+			if((ratio > 0.5 || ratio < 1.5))
+			{
+				num_valid = true;
+			}else
+			{
+				num_valid = false;
+			}
 		}else
 		{
 			image_valid = false;
@@ -159,7 +171,7 @@ int main(int argc, char **argv)
 	ros::Subscriber rgb_sub = n.subscribe("/zed/rgb/image_rect_color", 1, &rgbImageCallback);
 	ros::Subscriber depth_sub = n.subscribe("/zed/depth/depth_registered", 1, &depthImageCallback);
 	ros::Subscriber odom_sub = n.subscribe("/zed/odom", 1, &odomCallback);
-	ros::Publisher image_info_pub = n.advertise<project_3::Image_info>("camera/stereo/pose",1);
+	ros::Publisher image_info_pub = n.advertise<project_3::Image_info>("/stereo/pose",1);
 	ros::Rate loop_rate(10);
 
 	while(ros::ok())
@@ -171,10 +183,11 @@ int main(int argc, char **argv)
 			left.getPosition();
 
 			imshow("source",left.image);
-			ROS_INFO("%d, %d", (int)left.uvPos.x,(int)left.uvPos.y);
+			//ROS_INFO("%d, %d", (int)left.uvPos.x,(int)left.uvPos.y);
 			waitKey(1);
 			if(left.image_valid)
 			{	
+
 				float depth = depth_image.at<float>((int)left.uvPos.y,(int)left.uvPos.x);
 				float x,y;
 				x = (left.uvPos.x - rgb_image.cols/2) * depth / 350.0;
@@ -187,9 +200,16 @@ int main(int argc, char **argv)
 				project_3::Image_info msg;
 				msg.header.stamp =  ros::Time::now();
 				msg.valid = true;
+				msg.theta_valid = left.num_valid;
 				msg.x = p.getX();
 				msg.y = p.getY();
 				msg.z = p.getZ();
+				image_info_pub.publish(msg);
+			}else
+			{
+				project_3::Image_info msg;
+				msg.header.stamp =  ros::Time::now();
+				msg.valid = false;
 				image_info_pub.publish(msg);
 			}	
 			flag = false;
