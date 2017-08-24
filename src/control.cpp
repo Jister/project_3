@@ -22,16 +22,18 @@
 #define STATE_ADJUST_Z_BEFORE_CROSS		10
 #define STATE_ADJUST_Z_AFTER_CROSS		11
 #define STATE_ADJUST_YAW				12
-#define TARGET_LANDING					13
-#define TARGET_CROSS_CIRCLE				14
+#define STATE_FIND_IMAGE				13
+#define TARGET_LANDING					14
+#define TARGET_CROSS_CIRCLE				15
 
-#define VEL_XY							0.4
-#define VEL_CROSS						0.4
+#define VEL_XY							0.5
+#define VEL_CROSS						0.5
 #define VEL_UP							1.0
 #define VEL_DOWN						-0.8
 #define VEL_Z 							0.8
 #define VEL_YAW							0.5
-#define LAND_HEIGHT						1.0
+#define LAND_HEIGHT						0.6
+#define FIND_HEIGHT						2.0
 #define IMG_CRITICAL					30 
 #define POS_NEAR						0.2
 #define IMG_POS_NEAR					0.1
@@ -40,18 +42,20 @@
 #define IMG_CTL_P 						0.8
 #define CROSS_DISTANCE 					1.5
 #define STEREO_ARRIVED					0.08
+#define YAW_CHANGE_NUM					5
+#define YAW_CROSS_NUM					2	
+#define FINISHED_NUM					7
 
 #define PI 								3.14
 
 using namespace std;
 using namespace Eigen;
 
-float fly_height[9] = { 2.0, 1.0, 2.0, 1.5, 2.0, 1.5, 1.5, 1.5, 1.5};
-float cross_height[4] = {2.0, 2.58, 1.6, 1.8};
+float fly_height[9] = { 2.0, 1.1, 1.0, 2.0, 2.0, 1.3, 2.0, 1.5, 1.5};
+float cross_height[4] = {2.3, 2.1, 2.5, 1.8};
 bool change_yaw = false;
 float yaw_sp = PI/2.0;
 Matrix<float, 9, 4> Reletive_pos;
-// Reletive_pos.resize(9,4);
 float dt = 0.05;
 
 int vehicle_status = 0;
@@ -79,6 +83,8 @@ bool num_valid = false;
 geometry_msgs::Pose2D image_pos;
 geometry_msgs::Point stereo_pos;
 int imageCenter[2];
+
+int image_lost_cnt = 0;
 
 void reset_pos_sp_xy()
 {
@@ -346,6 +352,13 @@ bool isStereoReady()
 	{
 		ROS_INFO("STEREO: %f  %f", stereo_pos.y, stereo_pos.x);
 		ROS_INFO("stereo ready.");
+		Vector2f err;
+		err(0) = stereo_pos.x ;
+		err(1) = stereo_pos.y - CROSS_DISTANCE;
+		Vector2f err_world; 
+		rotate(PI/2.0 - current_pos.yaw, err, err_world);
+		pos_stamp.x = current_pos.x + err_world(0);
+		pos_stamp.y = current_pos.y + err_world(1);
 		return true;
 	}else
 	{
@@ -436,14 +449,25 @@ int main(int argc, char **argv)
     ros::Publisher vel_pub = n.advertise<px4_autonomy::Velocity>("/px4/cmd_vel", 1); 
 	ros::Rate loop_rate(20);
 
-	Reletive_pos<<
-   -2.5,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
-	0.0,  3.0,  0,   TARGET_CROSS_CIRCLE, 	//2-3Cross
-	0.0,  2.5,  0,   TARGET_LANDING,		//3-4P
-   -2.75,  0.0,  0,   TARGET_CROSS_CIRCLE,	//4-5C
-    -0.7, -1.98,  0,   TARGET_LANDING,	//5-6C
-   -2.78,  0.8,  0,   TARGET_LANDING,		//6-7P
-	4.83,  0.0,  0,   TARGET_LANDING,		//7-8P
+	// Reletive_pos<<
+ //   -2.5,  0.0,  0,   TARGET_LANDING,      	//1-2Parking
+	// 0.0,  3.0,  0,   TARGET_CROSS_CIRCLE, 	//2-3Cross
+	// 0.0,  2.5,  0,   TARGET_LANDING,		//3-4P
+ //   -2.75,  0.0,  0,   TARGET_CROSS_CIRCLE,	//4-5C
+ //   -0.7, -1.98,  0,   TARGET_CROSS_CIRCLE,	//5-6C
+ //   -2.78,  0.8,  0,   TARGET_LANDING,		//6-7P
+	// 4.83,  0.0,  0,   TARGET_LANDING,		//7-8P
+ //   -0.6,  -2.65, 0,   TARGET_CROSS_CIRCLE,	//8-9C
+ //   -0.6,  -2.65, 0,   TARGET_LANDING;		//9-10P
+
+   	Reletive_pos<<
+   -2.5,  1.9,  0,   TARGET_LANDING,      	//1-2Parking
+   -1.3,  2.0,  0,   TARGET_CROSS_CIRCLE, 	//2-3Cross
+	2.0,  2.2,  0,   TARGET_CROSS_CIRCLE,		//3-4P
+    3.1,  2.1,  0,   TARGET_LANDING,	//4-5C
+    1.8, -3.3,  0,   TARGET_LANDING,	//5-6C
+   -1.3, -3.0,  0,   TARGET_CROSS_CIRCLE,		//6-7P
+   -1.9, -2.7,  0,   TARGET_LANDING,		//7-8P
    -0.6,  -2.65, 0,   TARGET_CROSS_CIRCLE,	//8-9C
    -0.6,  -2.65, 0,   TARGET_LANDING;		//9-10P
 
@@ -476,9 +500,15 @@ int main(int argc, char **argv)
 						}
 					}else
 					{
-						counter = 0;
-						vehicle_status = STATE_TAKEOFF;
-						ROS_INFO("Takeoff");
+						if(current_num == FINISHED_NUM)
+						{
+							ROS_INFO("Finished.");
+						}else
+						{
+							counter = 0;
+							vehicle_status = STATE_TAKEOFF;
+							ROS_INFO("Takeoff");
+						}
 					}
 					break;
 				}
@@ -507,7 +537,7 @@ int main(int argc, char **argv)
 							pos_sp_dt.yaw = yaw_sp;	
 							pose_pub.publish(pos_sp_dt);
 
-							if(current_num == 3)
+							if(current_num == YAW_CHANGE_NUM)
 							{
 								vehicle_status = STATE_HOVERING;
 								vehicle_next_status = STATE_ADJUST_YAW;
@@ -616,6 +646,13 @@ int main(int argc, char **argv)
 					}else
 					{
 						ROS_INFO("image not valid");
+						image_lost_cnt ++;
+						if(image_lost_cnt > 40)
+						{
+							image_lost_cnt = 0;
+							vehicle_next_status = vehicle_status;
+							vehicle_status = STATE_FIND_IMAGE;
+						}
 					}
 
 					break;
@@ -673,6 +710,13 @@ int main(int argc, char **argv)
 					}else
 					{
 						ROS_INFO("image not valid");
+						image_lost_cnt ++;
+						if(image_lost_cnt > 40)
+						{
+							image_lost_cnt = 0;
+							vehicle_next_status = vehicle_status;
+							vehicle_status = STATE_FIND_IMAGE;
+						}
 					}
 
 					break;
@@ -740,7 +784,7 @@ int main(int argc, char **argv)
 						//next will be crossing
 						ROS_INFO("Next will be crossing...");
 						px4_autonomy::Position pos_sp;	
-						if(cross_num == 1 && current_num == 3)
+						if(cross_num == YAW_CROSS_NUM && current_num == YAW_CHANGE_NUM)
 						{
 							pos_sp.x = pos_stamp.x + Reletive_pos(current_num, 0);
 							pos_sp.y = pos_stamp.y + Reletive_pos(current_num, 1) + CROSS_DISTANCE;
@@ -857,7 +901,8 @@ int main(int argc, char **argv)
 							pose_pub.publish(pos_sp_dt);
 
 							//record current position
-							pos_stamp = current_pos;
+							//pos_stamp = current_pos;
+							//move it to isStereoReady
 							//reset pos_sp
 							_reset_pos_sp_xy = true;
 							_reset_pos_sp_z = true;
@@ -904,7 +949,7 @@ int main(int argc, char **argv)
 					reset_pos_sp_xy();
 
 					px4_autonomy::Position pos_sp;
-					if(cross_num == 1 && current_num == 3)
+					if(cross_num == YAW_CROSS_NUM && current_num == YAW_CHANGE_NUM)
 					{
 						pos_sp.x = pos_stamp.x;
 						pos_sp.y = pos_stamp.y - 2.0 * CROSS_DISTANCE;
@@ -931,7 +976,7 @@ int main(int argc, char **argv)
 						
 						_reset_pos_sp_z = true;
 						pos_stamp.x = pos_stamp.x;
-						if(cross_num == 1 && current_num == 3)
+						if(cross_num == YAW_CROSS_NUM && current_num == YAW_CHANGE_NUM)
 						{
 							pos_stamp.y = pos_stamp.y - CROSS_DISTANCE;
 						}else
@@ -978,7 +1023,7 @@ int main(int argc, char **argv)
 					px4_autonomy::Position pos_sp;
 					pos_sp.x = pos_stamp.x;
 					pos_sp.y = pos_stamp.y;
-					pos_sp.z = cross_height[current_num];
+					pos_sp.z = cross_height[cross_num];
 
 					if(isArrived_z(current_pos, pos_sp))
 					{
@@ -1096,6 +1141,62 @@ int main(int argc, char **argv)
 						pose_pub.publish(pos_sp_dt);
 					}
 
+					break;
+				}
+
+				case STATE_FIND_IMAGE:
+				{
+					if(image_down_valid)
+					{
+						ROS_INFO("FInd down image!!!");
+						pos_sp_dt.header.stamp = ros::Time::now();
+						pos_sp_dt.x = current_pos.x;
+						pos_sp_dt.y = current_pos.y;
+						pos_sp_dt.z = current_pos.z; 
+						pos_sp_dt.yaw = yaw_sp;	
+						pose_pub.publish(pos_sp_dt);
+						vehicle_status = STATE_HOVERING;
+
+					}else
+					{
+						ROS_INFO("Looking for image...");
+						//fly to set height
+						px4_autonomy::Position pos_sp;
+						pos_sp.x = current_pos.x;
+						pos_sp.y = current_pos.y;
+						pos_sp.z = FIND_HEIGHT;
+
+						if(isArrived_z(current_pos, pos_sp))
+						{
+							pos_sp_dt.header.stamp = ros::Time::now();
+							pos_sp_dt.x = pos_sp.x;
+							pos_sp_dt.y = pos_sp.y;
+							pos_sp_dt.z = pos_sp.z; 
+							pos_sp_dt.yaw = yaw_sp;	
+							pose_pub.publish(pos_sp_dt);
+							//Switch to image control
+							vehicle_status = STATE_HOVERING;
+							ROS_INFO("Find image Finished...");
+
+						}else
+						{
+							//rise the height
+							reset_pos_sp_xy();
+							reset_pos_sp_z();
+							pos_sp_dt.header.stamp = ros::Time::now();
+							pos_sp_dt.x = pos_sp.x;
+							pos_sp_dt.y = pos_sp.y;
+							if(pos_sp_dt.z < pos_sp.z)
+							{
+								pos_sp_dt.z += VEL_UP * dt;
+							}else
+							{
+								pos_sp_dt.z = pos_sp.z;
+							}
+							pos_sp_dt.yaw = yaw_sp;	
+							pose_pub.publish(pos_sp_dt);
+						}
+					}
 					break;
 				}
 			}
